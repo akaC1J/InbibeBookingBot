@@ -10,7 +10,7 @@ class Booking:
     name: str
     phone: str
     date_time: datetime
-    guests: Optional[int] = None
+    guests: int
     message_id: int | None = None
 
 
