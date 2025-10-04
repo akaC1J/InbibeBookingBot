@@ -1,3 +1,5 @@
+import os
+
 from inbibe_bot.logging_config import setup_logging
 from inbibe_bot.bot_instance import bot
 

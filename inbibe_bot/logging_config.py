@@ -31,4 +31,4 @@ def setup_logging():
 
     if not root_logger.handlers:
         root_logger.addHandler(console_handler)
-        root_logger.addHandler(file_handler)
+        # root_logger.addHandler(file_handler)
