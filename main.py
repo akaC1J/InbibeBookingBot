@@ -1,3 +1,4 @@
+import logging
 import os
 import socketserver
 
@@ -18,7 +19,7 @@ from inbibe_bot.bot_instance import bot
 
 def run_http_server():
     with socketserver.TCPServer(("", 8000), Handler) as httpd:
-        print("🌐 HTTP сервер запущен на порту 8000")
+        logging.info("🌐 HTTP сервер запущен на порту 8000")
         httpd.serve_forever()
 
 
@@ -29,6 +30,6 @@ if __name__ == "__main__":
     http_thread = threading.Thread(target=run_http_server, daemon=True)
     http_thread.start()
 
-    print("🤖 Telegram-бот запущен")
+    logging.info("🤖 Telegram-бот запущен")
     bot.polling(none_stop=True)
 
