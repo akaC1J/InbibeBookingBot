@@ -1,6 +1,6 @@
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler
 from typing import Any
 
@@ -36,16 +36,17 @@ def _parse_int(value: Any, field: str) -> tuple[int | None, ValidationError | No
         return None, ValidationError(field, "must be integer")
 
 
-def _parse_iso_datetime(value: Any, field: str) -> tuple[datetime | None, ValidationError | None]:
+MSK = timezone(timedelta(hours=3))
+
+def _parse_iso_datetime(value: Any, field: str) -> tuple[None, ValidationError] | tuple[datetime, None]:
     if not isinstance(value, str):
         return None, ValidationError(field, "must be ISO string")
     try:
         # Поддержим 'YYYY-MM-DDTHH:MM' и полноценный ISO
-        dt = datetime.fromisoformat(value)
+        dt = datetime.fromisoformat(value).astimezone(MSK)
         return dt, None
     except ValueError:
         return None, ValidationError(field, "invalid ISO datetime format")
-
 
 def validate_booking_payload(payload: dict[str, Any]) -> tuple[Booking | None, list[ValidationError]]:
     errors: list[ValidationError] = []
