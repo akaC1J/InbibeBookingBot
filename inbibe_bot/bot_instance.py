@@ -5,7 +5,7 @@ import telebot
 
 API_KEY = os.getenv("api_key")  # Ваш токен бота
 
-ADMIN_GROUP_ID = int(os.getenv("admin_group_id")) # ID группы администраторов
+ADMIN_GROUP_ID = int(os.getenv("admin_group_id") or 0) # ID группы администраторов
 
 logger = logging.getLogger(__name__)
 

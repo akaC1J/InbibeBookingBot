@@ -116,7 +116,7 @@ def handle_message(message):
         bot.send_message(chat_id, "Спасибо! Ваша заявка отправлена. Для подтверждения мы с Вами свяжемся!.")
         del user_states[chat_id]
         booking_text = (
-            f"📥 Новая бронь:\n"
+            f"📥 Новая бронь (TG):\n"
             f"Имя: {booking.name}\n"
             f"Телефон: {booking.phone}\n"
             f"Дата: {format_date_russian(booking.date_time)}\n"

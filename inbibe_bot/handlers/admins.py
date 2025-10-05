@@ -1,8 +1,9 @@
 import logging
 
 from inbibe_bot.bot_instance import bot, ADMIN_GROUP_ID
+from inbibe_bot.models import Source
 from inbibe_bot.storage import bookings, alt_requests
-from inbibe_bot.utils import format_date_russian, parse_date_time
+from inbibe_bot.utils import format_date_russian, parse_date_time, send_vk_message
 
 logger = logging.getLogger(__name__)
 
@@ -40,25 +41,32 @@ def callback_handler(call):
             logger.error(f"Заявка с id {booking_id} не найдена для подтверждения.")
             bot.answer_callback_query(call.id, "Заявка не найдена.", show_alert=True)
             return
-        user_id = booking.user_id
-        name = booking.name
-        phone = booking.phone
         formatted_date = format_date_russian(booking.date_time)
         time_str = booking.date_time.strftime('%H:%M')
-        bot.send_message(
-            user_id,
-            f"✅ {name}, ваша бронь на {formatted_date} в {time_str} подтверждена.\nДля новой брони введите /start",
+
+        text_to_user = (
+            f"✅ {booking.name}, ваша бронь на {formatted_date} в {time_str} подтверждена."
         )
+        if booking.source == Source.TG:
+            text_to_user += "\nДля новой брони введите /start"
+            bot.send_message(booking.user_id, text_to_user)
+            logger.info(f"Заявка {booking_id} подтверждена. Пользователь {booking.user_id} уведомлён.")
+
+        else:
+            sent = send_vk_message(booking.user_id, text_to_user)
+            logger.info(
+                f"Заявка {booking_id} подтверждена. VK-пользователь {booking.user_id} уведомлён: {sent}."
+            )
+
         new_text = (
             "✅ *Заявка брони подтверждена:*\n"
-            f"👤 Имя: {name}\n"
+            f"👤 Имя: {booking.user_id}\n"
             f"👥 Количество гостей: {booking.guests}\n"
-            f"📞 Телефон: {phone}\n"
+            f"📞 Телефон: {booking.phone}\n"
             f"📅 Дата: {formatted_date}\n"
-            f"⏰ Время: {time_str}"
+            f"⏰ Время: {time_str}\n"
+            f"🌐 Источник: {booking.source.value}"
         )
-
-        logger.info(f"Заявка {booking_id} подтверждена. Пользователь {user_id} уведомлён.")
     elif data.startswith("reject_"):
         booking_id = data.split("_", 1)[1]
         booking = bookings.get(booking_id)
@@ -71,30 +79,40 @@ def callback_handler(call):
         phone = booking.phone
         formatted_date = format_date_russian(booking.date_time)
         time_str = booking.date_time.strftime('%H:%M')
-        bot.send_message(
-            user_id,
-            f"❌ Извините, {name}. Ваша бронь на {formatted_date} в {time_str} была отклонена.\nДля новой брони введите /start",
+
+        text_to_user = (
+            f"❌ Извините, {name}. Ваша бронь на {formatted_date} в {time_str} была отклонена."
         )
+        if booking.source == Source.TG:
+            text_to_user += "\nДля новой брони введите /start"
+            bot.send_message(user_id, text_to_user)
+            logger.info(f"Заявка {booking_id} отклонена. Пользователь {user_id} уведомлён.")
+        else:
+            sent = send_vk_message(booking.user_id, text_to_user)
+            logger.info(
+                f"Заявка {booking_id} отклонена. VK-пользователь {booking.user_id} уведомлён: {sent}."
+            )
+
         new_text = (
             "❌ *Заявка брони отклонена:*\n"
             f"👤 Имя: {name}\n"
             f"👥 Количество гостей: {booking.guests}\n"
             f"📞 Телефон: {phone}\n"
             f"📅 Дата: {formatted_date}\n"
-            f"⏰ Время: {time_str}"
+            f"⏰ Время: {time_str}\n"
+            f"🌐 Источник: {booking.source.value}"
         )
 
-        logger.info(f"Заявка {booking_id} отклонена. Пользователь {user_id} уведомлён.")
-
     try:
+        # noinspection PyUnboundLocalVariable
         bot.edit_message_text(new_text, chat_id=call.message.chat.id, message_id=booking.message_id)
-        logger.debug(f"Отредактировано сообщение заявки {booking_id}: {new_text}")
+        logger.debug(f"Отредактировано сообщение заявки {booking.id}: {new_text}")
     except Exception as e:
-        logger.error(f"Ошибка редактирования сообщения для заявки {booking_id}: {e}")
+        logger.error(f"Ошибка редактирования сообщения для заявки {booking.id}: {e}")
     bot.answer_callback_query(call.id, "Обработано.")
-    if booking_id in bookings:
-        del bookings[booking_id]
-        logger.debug(f"Заявка {booking_id} удалена из хранилища.")
+    if booking.id in bookings:
+        del bookings[booking.id]
+        logger.debug(f"Заявка {booking.id} удалена из хранилища.")
 
 
 @bot.message_handler(func=lambda message: message.chat.id == ADMIN_GROUP_ID and
@@ -129,17 +147,28 @@ def handle_alt_date_time(message):
     formatted_date = format_date_russian(new_date_time)
     time_str = new_date_time.time().strftime('%H:%M')
 
-    bot.send_message(
-        booking.user_id,
-        f"✅ {booking.name}, ваша бронь подтверждена на {formatted_date} в {time_str}.\nДля новой брони введите /start",
+    text_to_user = (
+        f"✅ {booking.name}, ваша бронь на {formatted_date} в {time_str} подтверждена."
     )
+
+    if booking.source == Source.TG:
+        text_to_user += "\nДля новой брони введите /start"
+        bot.send_message(
+            booking.user_id,
+            text_to_user,
+        )
+    else:
+        send_vk_message(booking.user_id, text_to_user)
+
+
     new_text = (
         "✅ *Заявка брони подтверждена:*\n"
-        f"👤 Имя: {booking.name}\n"
+        f"👤 Имя: {booking.user_id}\n"
         f"👥 Количество гостей: {booking.guests}\n"
         f"📞 Телефон: {booking.phone}\n"
         f"📅 Дата: {formatted_date}\n"
-        f"⏰ Время: {time_str}"
+        f"⏰ Время: {time_str}\n"
+        f"🌐 Источник: {booking.source.value}"
     )
 
     try:

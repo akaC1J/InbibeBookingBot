@@ -1,4 +1,37 @@
+import logging
 from datetime import datetime
+import os
+import requests
+
+
+VK_API_URL = "https://api.vk.com/method/messages.send"
+VK_GROUP_TOKEN = os.getenv("VK_ACCESS_TOKEN")
+VK_API_VERSION = os.getenv("VK_API_VERSION") or "5.199"
+
+
+def send_vk_message(user_id: int, message: str) -> bool:
+    """Send a message to a VK user on behalf of the group.
+
+    Requires env VK_GROUP_TOKEN (or VK_ACCESS_TOKEN) with messages permission.
+    Returns True on success, False otherwise.
+    """
+    if not VK_GROUP_TOKEN:
+        # No token configured
+        return False
+    try:
+        payload = {
+            "user_id": user_id,
+            "random_id": int(datetime.now().timestamp() * 1000),
+            "message": message,
+            "access_token": VK_GROUP_TOKEN,
+            "v": VK_API_VERSION,
+        }
+        resp = requests.post(VK_API_URL, data=payload, timeout=10)
+        data = resp.json()
+        return "response" in data and isinstance(data["response"], int)
+    except Exception:
+        logging.warn(f"Сообщение пользователю {user_id} не было отправлено")
+        return False
 
 
 def format_date_russian(dt: datetime) -> str:
