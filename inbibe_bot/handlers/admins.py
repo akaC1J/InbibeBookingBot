@@ -60,7 +60,7 @@ def callback_handler(call):
 
         new_text = (
             "✅ *Заявка брони подтверждена:*\n"
-            f"👤 Имя: {booking.user_id}\n"
+            f"👤 Имя: {booking.name}\n"
             f"👥 Количество гостей: {booking.guests}\n"
             f"📞 Телефон: {booking.phone}\n"
             f"📅 Дата: {formatted_date}\n"
@@ -95,7 +95,7 @@ def callback_handler(call):
 
         new_text = (
             "❌ *Заявка брони отклонена:*\n"
-            f"👤 Имя: {name}\n"
+            f"👤 Имя: {booking.name}\n"
             f"👥 Количество гостей: {booking.guests}\n"
             f"📞 Телефон: {phone}\n"
             f"📅 Дата: {formatted_date}\n"
