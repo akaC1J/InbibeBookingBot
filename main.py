@@ -17,7 +17,7 @@ import socketserver
 from inbibe_bot.bot_instance import bot
 
 
-def run_http_server():
+def run_http_server() -> None:
     with socketserver.TCPServer(("", 8000), Handler) as httpd:
         logging.info("🌐 HTTP сервер запущен на порту 8000")
         httpd.serve_forever()

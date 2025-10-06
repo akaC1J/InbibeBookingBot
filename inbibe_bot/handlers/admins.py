@@ -1,5 +1,7 @@
 import logging
 
+from telebot.types import CallbackQuery, Message
+
 from inbibe_bot.bot_instance import bot, ADMIN_GROUP_ID
 from inbibe_bot.models import Source
 from inbibe_bot.storage import bookings, alt_requests
@@ -10,9 +12,13 @@ logger = logging.getLogger(__name__)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("approve_alt_") or
                                               call.data.startswith("approve_") or
-                                              call.data.startswith("reject_"))  # type: ignore
-def callback_handler(call):
+                                              call.data.startswith("reject_"))
+def callback_handler(call: CallbackQuery) -> None:
     data = call.data
+    if data is None:
+        logger.error(f"Неверный callback id: {call.id}")
+        return
+
     logger.info(f"Получен callback с данными: {data}")
 
     if data.startswith("approve_alt_"):
@@ -37,7 +43,7 @@ def callback_handler(call):
     if data.startswith("approve_"):
         booking_id = data.split("_", 1)[1]
         booking = bookings.get(booking_id)
-        if not booking:
+        if not booking :
             logger.error(f"Заявка с id {booking_id} не найдена для подтверждения.")
             bot.answer_callback_query(call.id, "Заявка не найдена.", show_alert=True)
             return
@@ -103,13 +109,18 @@ def callback_handler(call):
             f"🌐 Источник: {booking.source.value}"
         )
 
+    # noinspection PyUnboundLocalVariable
+    assert booking is not None
     try:
         # noinspection PyUnboundLocalVariable
-        bot.edit_message_text(new_text, chat_id=call.message.chat.id, message_id=booking.message_id)
+        bot.edit_message_text(new_text, chat_id=call.message.chat.id, message_id=booking.message_id or -1)
         logger.debug(f"Отредактировано сообщение заявки {booking.id}: {new_text}")
     except Exception as e:
         logger.error(f"Ошибка редактирования сообщения для заявки {booking.id}: {e}")
+        return
+
     bot.answer_callback_query(call.id, "Обработано.")
+
     if booking.id in bookings:
         del bookings[booking.id]
         logger.debug(f"Заявка {booking.id} удалена из хранилища.")
@@ -117,11 +128,11 @@ def callback_handler(call):
 
 @bot.message_handler(func=lambda message: message.chat.id == ADMIN_GROUP_ID and
                                           message.reply_to_message and
-                                          message.reply_to_message.message_id in alt_requests.values())  # type: ignore
-def handle_alt_date_time(message):
+                                          message.reply_to_message.message_id in alt_requests.values())
+def handle_alt_date_time(message: Message) -> None:
     booking_id = None
     for b_id, msg_id in alt_requests.items():
-        if msg_id == message.reply_to_message.message_id:
+        if message.reply_to_message and msg_id == message.reply_to_message.message_id:
             booking_id = b_id
             break
     if not booking_id:

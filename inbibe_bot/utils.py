@@ -50,7 +50,9 @@ def format_date_russian(dt: datetime) -> str:
     return f"{formatted} ({weekday_ru})"
 
 
-def parse_date_time(text: str) -> datetime | None:
+def parse_date_time(text: str | None) -> datetime | None:
+    if text is None:
+        return None
     try:
         return datetime.strptime(text.strip(), "%d.%m.%y %H:%M")
     except ValueError:

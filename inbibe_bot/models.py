@@ -22,13 +22,13 @@ class Booking:
 
 @dataclass
 class UserStateData:
-    name: Optional[str] = None
-    phone: Optional[str] = None
-    date_time: datetime | None = None
-    guests: Optional[int] = None
+    name: str = ""
+    phone: str = ""
+    date_time: datetime = datetime.now()
+    guests: int = 0
 
 
 @dataclass
 class UserState:
     state: str
-    data: UserStateData = field(default_factory=UserStateData)
+    data: UserStateData = field(default_factory=lambda: UserStateData())

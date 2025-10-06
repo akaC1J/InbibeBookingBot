@@ -11,7 +11,7 @@ LOG_FILE = os.path.join(LOG_DIR, "inbibe-bot.log")
 os.makedirs(LOG_DIR, exist_ok=True)
 
 
-def setup_logging():
+def setup_logging() -> None:
     formatter = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATEFMT)
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)

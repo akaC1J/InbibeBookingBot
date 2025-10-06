@@ -3,21 +3,21 @@ from datetime import date, timedelta, datetime
 import telebot
 
 
-def main_menu_keyboard():
+def main_menu_keyboard() -> telebot.types.ReplyKeyboardMarkup:
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     btn = telebot.types.KeyboardButton("Начать бронирование")
     markup.add(btn)
     return markup
 
 
-def get_phone_keyboard():
+def get_phone_keyboard() -> telebot.types.ReplyKeyboardMarkup:
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     btn_share = telebot.types.KeyboardButton("Поделиться номером", request_contact=True)
     markup.add(btn_share)
     return markup
 
 
-def generate_date_keyboard():
+def generate_date_keyboard() -> telebot.types.InlineKeyboardMarkup:
     markup = telebot.types.InlineKeyboardMarkup()
     today = date.today()
     dates = [today + timedelta(days=i) for i in range(31)]
@@ -34,7 +34,7 @@ def generate_date_keyboard():
     return markup
 
 
-def generate_alt_date_keyboard(booking_id):
+def generate_alt_date_keyboard(booking_id : str) -> telebot.types.InlineKeyboardMarkup:
     markup = telebot.types.InlineKeyboardMarkup()
     today = date.today()
     dates = [today + timedelta(days=i) for i in range(31)]
@@ -52,7 +52,7 @@ def generate_alt_date_keyboard(booking_id):
     return markup
 
 
-def generate_alt_time_keyboard(booking_id, booking_date: date):
+def generate_alt_time_keyboard(booking_id: str, booking_date: date) -> telebot.types.InlineKeyboardMarkup:
     markup = telebot.types.InlineKeyboardMarkup()
     start_time = datetime.combine(booking_date, datetime.strptime("15:00", "%H:%M").time())
     end_time = datetime.combine(booking_date, datetime.strptime("23:45", "%H:%M").time())
@@ -75,7 +75,7 @@ def generate_alt_time_keyboard(booking_id, booking_date: date):
     return markup
 
 
-def generate_time_keyboard(booking_date: date):
+def generate_time_keyboard(booking_date: date) -> telebot.types.InlineKeyboardMarkup:
     markup = telebot.types.InlineKeyboardMarkup()
     wd = booking_date.weekday()
     if wd in [5, 6]:
