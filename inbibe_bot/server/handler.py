@@ -11,7 +11,7 @@ import telebot
 
 from inbibe_bot.bot_instance import bot, ADMIN_GROUP_ID
 from inbibe_bot.models import Booking, Source
-from inbibe_bot.server.model import BookingResponse
+from inbibe_bot.server.model import BookingResponse, BookingRequest, BookingValidationError
 from inbibe_bot.storage import bookings
 from inbibe_bot.utils import format_date_russian
 
@@ -65,51 +65,6 @@ def _parse_iso_datetime(value: Any, field: str) -> tuple[datetime | None, Valida
         return None, ValidationError(field, "invalid ISO datetime format")
 
 
-def validate_booking_payload(payload: JSONDict) -> tuple[Booking | None, list[ValidationError]]:
-    """Проводит строгую валидацию данных брони."""
-    errors: list[ValidationError] = []
-
-    # Проверка обязательных полей
-    for f in ("user_id", "name", "phone", "date_time", "guests"):
-        if err := _require(payload, f):
-            errors.append(err)
-
-    if errors:
-        return None, errors
-
-    # user_id
-    user_id, err = _parse_int(payload.get("user_id"), "user_id")
-    if err:
-        errors.append(err)
-
-    # guests
-    guests, err = _parse_int(payload.get("guests"), "guests")
-    if err:
-        errors.append(err)
-
-    # date_time
-    dt, err = _parse_iso_datetime(payload.get("date_time"), "date_time")
-    if err:
-        errors.append(err)
-
-    name = str(payload.get("name", "")).strip()
-    phone = str(payload.get("phone", "")).strip()
-
-    if errors:
-        return None, errors
-
-    booking = Booking(
-        id=str(uuid.uuid4()),
-        user_id=user_id or 0,
-        name=name,
-        phone=phone,
-        date_time=dt or datetime.now(MSK),
-        guests=guests or 0,
-        source=Source.VK,
-    )
-    return booking, []
-
-
 # === HTTP-обработчик =========================================================
 
 class Handler(BaseHTTPRequestHandler):
@@ -132,23 +87,17 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(400, payload_or_err)
             return
 
-        # Narrow type: after ok == True, payload_or_err must be a dict
-        assert isinstance(payload_or_err, dict)
-        payload: JSONDict = payload_or_err
+        # Narrow type: after ok == True, payload_or_err must be a BookingRequest
+        assert isinstance(payload_or_err, BookingRequest)
 
-        booking, errors = validate_booking_payload(payload)
-        if errors:
-            self._send_json(
-                422,
-                BookingResponse.fail(
-                    error="validation failed",
-                    details=[e.to_dict() for e in errors],
-                ),
-            )
-            return
-
-        # At this point, booking must be present
-        assert booking is not None
+        booking = Booking(id=str(uuid.uuid4()),
+                          user_id=payload_or_err.user_id or -1,
+                          name=payload_or_err.name,
+                          phone=payload_or_err.phone,
+                          date_time=payload_or_err.date_time,
+                          guests=payload_or_err.guests,
+                          source=Source.VK
+                          )
 
         bookings[booking.id] = booking
 
@@ -190,7 +139,7 @@ class Handler(BaseHTTPRequestHandler):
 
         self.wfile.write(json.dumps(response.to_dict(), ensure_ascii=False).encode("utf-8"))
 
-    def _read_json(self) -> tuple[bool, JSONDict | BookingResponse]:
+    def _read_json(self) -> tuple[bool, BookingRequest | BookingResponse]:
         """Считывает тело JSON и возвращает (ok, data)."""
         try:
             content_length = int(self.headers.get("Content-Length", "0"))
@@ -202,11 +151,13 @@ class Handler(BaseHTTPRequestHandler):
             return False, BookingResponse.fail(error="empty body")
 
         try:
-            return True, json.loads(body.decode("utf-8"))
+            return True, BookingRequest.from_json(json.loads(body.decode("utf-8")))
         except UnicodeDecodeError:
             return False, BookingResponse.fail(error="invalid encoding, expected UTF-8")
         except json.JSONDecodeError:
             return False, BookingResponse.fail(error="invalid JSON")
+        except BookingValidationError as e:
+            return False, BookingResponse.fail(error=str(e))
 
     def not_found(self) -> None:
         self._send_json(404, BookingResponse.fail(error="Not found"))
