@@ -9,7 +9,6 @@ from typing import Any, Optional
 class BookingResponse:
     success: bool
     error: Optional[str] = None
-    details: Optional[list[dict[str, Any]]] = None
 
     def to_dict(self) -> dict[str, Any]:
         """Превращает в готовый JSON-объект."""
@@ -21,9 +20,9 @@ class BookingResponse:
         return cls(success=True)
 
     @classmethod
-    def fail(cls, error: str, details: Optional[list[dict[str, Any]]] = None) -> BookingResponse:
+    def fail(cls, error: str) -> BookingResponse:
         """Быстро создать ответ с ошибкой."""
-        return cls(success=False, error=error, details=details)
+        return cls(success=False, error=error)
 
 class BookingValidationError(ValueError):
     """Ошибка при разборе или валидации данных бронирования."""
