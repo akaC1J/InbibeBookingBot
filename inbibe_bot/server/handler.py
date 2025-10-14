@@ -183,3 +183,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def not_found(self) -> None:
         self._send_json(404, BookingResponse.fail(error="Not found"))
+
+    def log_request(self, code: int | str = "-", size: int | str = "-") ->None:
+        # Логировать всё, кроме запросов с 200 на /api/booking
+        if code == 200 and getattr(self, "path", "") == "/api/booking":
+            return
+        super().log_request(code, size)
+
