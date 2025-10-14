@@ -1,6 +1,6 @@
 #!/bin/bash
 
-curl -i -v  -X POST https://qf5q-u9ak-080o.gw-1a.dockhost.net/api/bok \
+curl -i -v  -X POST localhost:8000/api/book \
     -H "Content-Type: application/json; charset=utf-8" \
     --data-binary '{
       "user_id": 67444034,

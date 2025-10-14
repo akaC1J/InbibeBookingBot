@@ -12,7 +12,7 @@ import telebot
 from inbibe_bot.bot_instance import bot, ADMIN_GROUP_ID
 from inbibe_bot.models import Booking, Source
 from inbibe_bot.server.model import BookingResponse, BookingRequest, BookingValidationError
-from inbibe_bot.storage import bookings
+from inbibe_bot.storage import bookings, ready_bookings, ready_delivered_ids
 from inbibe_bot.utils import format_date_russian
 
 # === Типы ====================================================================
@@ -74,6 +74,18 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(204)
         self._set_cors()
         self.end_headers()
+
+    def do_GET(self) -> None:
+        if self.path == "/api/bookings":
+            # return only approved bookings that have not been delivered yet
+            new_bookings = [
+                b.to_dict() for b in ready_bookings if b.id not in ready_delivered_ids
+            ]
+            for b in new_bookings:
+                ready_delivered_ids.add(b["id"])
+            self._send_raw_json(200, new_bookings)
+        else:
+            self.not_found()
 
     def do_POST(self) -> None:
         if self.path != "/api/book":
@@ -138,6 +150,14 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
         self.wfile.write(json.dumps(response.to_dict(), ensure_ascii=False).encode("utf-8"))
+
+    def _send_raw_json(self, status: int, data: Any) -> None:
+        """Sends arbitrary JSON-serializable data with proper headers."""
+        self.send_response(status)
+        self._set_cors()
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
 
     def _read_json(self) -> tuple[bool, BookingRequest | BookingResponse]:
         """Считывает тело JSON и возвращает (ok, data)."""

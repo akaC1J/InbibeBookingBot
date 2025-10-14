@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 class Source(str, Enum):
     TG = "Telegram"
@@ -16,8 +15,21 @@ class Booking:
     phone: str
     date_time: datetime
     guests: int
+    table_number: int = -1  # -1 = Any
     message_id: int | None = None
     source: Source = Source.TG
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "name": self.name,
+            "phone": self.phone,
+            "date_time": self.date_time.isoformat(),
+            "guests": self.guests,
+            "table_number": self.table_number,
+            "source": self.source.value,
+        }
 
 
 @dataclass
