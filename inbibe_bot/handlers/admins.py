@@ -45,7 +45,7 @@ def callback_handler(call: CallbackQuery) -> None:
             return
         msg = bot.send_message(
             ADMIN_GROUP_ID,
-            f"Введите новую дату и время в формате 15.09.25 16:43 для заявки (телефон: {booking.phone}).\n"
+            f"Введите новую дату и время в формате 15.09.25 16:43 для заявки (ID: {booking.id}).\n"
             f"(ответьте на это сообщение):",
         )
         alt_requests[booking_id] = msg.message_id
@@ -67,7 +67,7 @@ def callback_handler(call: CallbackQuery) -> None:
             kb = _build_table_keyboard(booking_id)
             msg = bot.send_message(
                 ADMIN_GROUP_ID,
-                f"Выберите номер стола для заявки (телефон: {booking.phone}):",
+                f"Выберите номер стола для заявки (ID: {booking.id}):",
                 reply_markup=kb,
             )
             table_requests[booking_id] = msg.message_id
@@ -105,6 +105,7 @@ def callback_handler(call: CallbackQuery) -> None:
 
         new_text = (
             "❌ *Заявка брони отклонена:*\n"
+            f"🆔 ID: {booking.id}\n"
             f"👤 Имя: {booking.name}\n"
             f"👥 Количество гостей: {booking.guests}\n"
             f"📞 Телефон: {phone}\n"
@@ -176,6 +177,7 @@ def handle_table_selection(call: CallbackQuery) -> None:
     table_text = "Любой" if table_num == -1 else str(table_num)
     new_text = (
         "✅ *Заявка брони подтверждена:*\n"
+        f"🆔 ID: {booking.id}\n"
         f"👤 Имя: {booking.name}\n"
         f"👥 Количество гостей: {booking.guests}\n"
         f"📞 Телефон: {booking.phone}\n"
@@ -250,7 +252,7 @@ def handle_alt_date_time(message: Message) -> None:
         kb = _build_table_keyboard(booking_id)
         msg = bot.send_message(
             ADMIN_GROUP_ID,
-            f"Дата/время обновлены. Выберите номер стола для заявки (телефон: {booking.phone}):",
+            f"Дата/время обновлены. Выберите номер стола для заявки (ID: {booking.id}):",
             reply_markup=kb,
         )
         table_requests[booking_id] = msg.message_id

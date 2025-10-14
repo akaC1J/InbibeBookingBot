@@ -9,6 +9,7 @@ from typing import Any, Final
 import telebot
 from telebot.types import Message, CallbackQuery, ReplyKeyboardRemove
 
+from inbibe_bot import utils
 from inbibe_bot.bot_instance import bot, ADMIN_GROUP_ID
 from inbibe_bot.keyboards import (
     main_menu_keyboard,
@@ -123,10 +124,9 @@ def handle_message(message: Message) -> None:
             return
 
         data.guests = int(text)
-        booking_id = str(uuid.uuid4())
 
         booking = Booking(
-            id=booking_id,
+            id=utils.gen_id(),
             user_id=chat_id,
             name=data.name,
             phone=data.phone,
@@ -134,7 +134,7 @@ def handle_message(message: Message) -> None:
             guests=data.guests,
         )
 
-        bookings[booking_id] = booking
+        bookings[booking.id] = booking
         del user_states[chat_id]
 
         bot.send_message(chat_id, "Спасибо! Ваша заявка отправлена. Мы скоро с Вами свяжемся!")
@@ -230,6 +230,7 @@ def _notify_admins_about_booking(booking: Booking) -> None:
     """Отправляет уведомление администраторам о новой броне."""
     booking_text = (
         f"📥 Новая бронь (TG):\n"
+        f"ID: {booking.id}\n"
         f"Имя: {booking.name}\n"
         f"Телефон: {booking.phone}\n"
         f"Дата: {format_date_russian(booking.date_time)}\n"

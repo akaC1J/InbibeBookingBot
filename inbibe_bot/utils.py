@@ -1,8 +1,9 @@
 import logging
+import random
+import string
 from datetime import datetime
 import os
 import requests
-
 
 VK_API_URL = "https://api.vk.com/method/messages.send"
 VK_GROUP_TOKEN = os.getenv("VK_ACCESS_TOKEN")
@@ -57,3 +58,10 @@ def parse_date_time(text: str | None) -> datetime | None:
         return datetime.strptime(text.strip(), "%d.%m.%y %H:%M")
     except ValueError:
         return None
+
+
+def gen_id() -> str:
+    prefix = random.choice(string.ascii_lowercase)  # случайная буква A–Z
+    now = datetime.now().strftime("%y%m%d")  # YYMMDD
+    suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=5))
+    return f"{prefix}{now}-{suffix}"

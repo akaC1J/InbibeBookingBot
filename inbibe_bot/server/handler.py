@@ -9,6 +9,7 @@ from typing import Any, TypedDict, TypeAlias, cast
 
 import telebot
 
+from inbibe_bot import utils
 from inbibe_bot.bot_instance import bot, ADMIN_GROUP_ID
 from inbibe_bot.models import Booking, Source
 from inbibe_bot.server.model import BookingResponse, BookingRequest, BookingValidationError
@@ -102,7 +103,7 @@ class Handler(BaseHTTPRequestHandler):
         # Narrow type: after ok == True, payload_or_err must be a BookingRequest
         assert isinstance(payload_or_err, BookingRequest)
 
-        booking = Booking(id=str(uuid.uuid4()),
+        booking = Booking(id=utils.gen_id(),
                           user_id=payload_or_err.user_id or -1,
                           name=payload_or_err.name,
                           phone=payload_or_err.phone,
@@ -115,6 +116,7 @@ class Handler(BaseHTTPRequestHandler):
 
         booking_text = (
             f"📥 Новая бронь (VK):\n"
+            f"ID: {booking.id}\n"
             f"Имя: {booking.name}\n"
             f"Телефон: {booking.phone}\n"
             f"Дата: {format_date_russian(booking.date_time)}\n"
