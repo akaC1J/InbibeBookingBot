@@ -11,18 +11,27 @@ from inbibe_bot.utils import format_date_russian, parse_date_time, send_vk_messa
 logger = logging.getLogger(__name__)
 
 
-def _build_table_keyboard(booking_id: str) -> telebot.types.InlineKeyboardMarkup:
+def _build_table_keyboard(booking_id: str, table_count: int) -> telebot.types.InlineKeyboardMarkup:
     markup = telebot.types.InlineKeyboardMarkup(row_width=5)
+
+    # Создаём кнопки от 1 до table_count
     buttons = [
         telebot.types.InlineKeyboardButton(text=str(i), callback_data=f"table_{booking_id}_{i}")
-        for i in range(1, 11)
+        for i in range(1, table_count + 1)
     ]
+
+    # Кнопка "Любой"
     any_btn = telebot.types.InlineKeyboardButton(text="Любой", callback_data=f"table_{booking_id}_any")
-    # Arrange buttons in rows of 5
-    for i in range(0, 10, 5):
-        markup.row(*buttons[i:i+5])
+
+    # Раскладываем кнопки по рядам по 5 штук
+    for i in range(0, table_count, 5):
+        markup.row(*buttons[i:i + 5])
+
+    # Добавляем кнопку "Любой" в отдельной строке
     markup.row(any_btn)
+
     return markup
+
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("approve_alt_") or
@@ -64,7 +73,7 @@ def callback_handler(call: CallbackQuery) -> None:
             return
         # Ask for table selection instead of immediate approval
         try:
-            kb = _build_table_keyboard(booking_id)
+            kb = _build_table_keyboard(booking_id, 25)
             msg = bot.send_message(
                 ADMIN_GROUP_ID,
                 f"Выберите номер стола для заявки (ID: {booking.id}):",
@@ -249,7 +258,7 @@ def handle_alt_date_time(message: Message) -> None:
 
     # Ask admin to choose a table number now
     try:
-        kb = _build_table_keyboard(booking_id)
+        kb = _build_table_keyboard(booking_id, 25)
         msg = bot.send_message(
             ADMIN_GROUP_ID,
             f"Дата/время обновлены. Выберите номер стола для заявки (ID: {booking.id}):",
