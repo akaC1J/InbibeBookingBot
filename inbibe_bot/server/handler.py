@@ -186,7 +186,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_request(self, code: int | str = "-", size: int | str = "-") ->None:
         # Логировать всё, кроме запросов с 200 на /api/booking
-        if code == 200 and getattr(self, "path", "") == "/api/booking":
+        if code == 200 and getattr(self, "path", "") == "/api/bookings":
             return
         super().log_request(code, size)
 
