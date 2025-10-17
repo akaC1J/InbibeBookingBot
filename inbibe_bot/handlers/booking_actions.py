@@ -93,7 +93,7 @@ def finalize_booking_actions(booking_id: str) -> None:
 def set_final_booking_text(chat_id: int, booking: Booking, is_success: bool = True) -> None:
     try:
         new_text = _build_admin_final_text(booking, is_success)
-        bot.edit_message_text(new_text, chat_id=chat_id, message_id=booking.message_id or -1, parse_mode="Markdown",)
+        bot.edit_message_text(new_text, chat_id=chat_id, message_id=booking.message_id or -1, parse_mode="Markdown")
         logger.debug(f"Установлено финальное сообщение заявки {booking.id}: {new_text}")
     except Exception as exc:
         logger.error(f"Ошибка установки финального сообщения для заявки {booking.id}: {exc}")
