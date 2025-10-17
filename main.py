@@ -1,9 +1,6 @@
 import logging
-import os
-import socketserver
 
 from inbibe_bot.logging_config import setup_logging
-from inbibe_bot.bot_instance import bot
 
 # Register handlers
 # noinspection PyUnresolvedReferences
@@ -32,4 +29,3 @@ if __name__ == "__main__":
 
     logging.info("🤖 Telegram-бот запущен")
     bot.polling(none_stop=True)
-

@@ -32,3 +32,5 @@ def setup_logging() -> None:
     if not root_logger.handlers:
         root_logger.addHandler(console_handler)
         # root_logger.addHandler(file_handler)
+
+    logging.getLogger("inbibe_bot").setLevel(logging.DEBUG)
