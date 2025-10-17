@@ -15,7 +15,7 @@ class Booking:
     phone: str
     date_time: datetime
     guests: int
-    tables_number: list[int] = field(default_factory=list)
+    table_numbers: set[int] = field(default_factory=set)
     message_id: int | None = None
     source: Source = Source.TG
 
@@ -27,7 +27,7 @@ class Booking:
             "phone": self.phone,
             "date_time": self.date_time.isoformat(),
             "guests": self.guests,
-            "table_numbers": self.tables_number,
+            "table_numbers": list(self.table_numbers),
             "source": self.source.value,
         }
 

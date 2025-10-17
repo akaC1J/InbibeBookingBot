@@ -1,17 +1,18 @@
 import logging
+from datetime import datetime, timedelta
 from typing import Optional
-
-import telebot
 
 from telebot.types import CallbackQuery, Message
 
 from inbibe_bot import storage
 from inbibe_bot.bot_instance import bot, ADMIN_GROUP_ID
-from inbibe_bot.handlers.booking_actions import finalize_booking_approval
+from inbibe_bot.handlers.booking_actions import finalize_booking_approval, finalize_booking_actions, \
+    set_final_booking_text, notify_user_booking_status
 from inbibe_bot.keyboards import build_table_keyboard
-from inbibe_bot.models import Booking, Source
+from inbibe_bot.models import Booking
 from inbibe_bot.storage import bookings, alt_requests, table_requests
-from inbibe_bot.utils import format_date_russian, parse_date_time, send_vk_message
+from inbibe_bot.temporary_messages import register_ephemeral_message
+from inbibe_bot.utils import parse_date_time
 
 logger = logging.getLogger(__name__)
 
@@ -29,22 +30,6 @@ def _get_booking_or_alert(call: CallbackQuery, booking_id: str, action_descripti
     bot.answer_callback_query(call.id, "Заявка не найдена.", show_alert=True)
     return None
 
-
-def _edit_booking_message(call: CallbackQuery, booking: Booking, new_text: str) -> None:
-    try:
-        bot.edit_message_text(new_text, chat_id=call.message.chat.id, message_id=booking.message_id or -1)
-        logger.debug(f"Отредактировано сообщение заявки {booking.id}: {new_text}")
-    except Exception as exc:
-        logger.error(f"Ошибка редактирования сообщения для заявки {booking.id}: {exc}")
-        raise
-
-
-def _remove_booking_from_storage(booking_id: str) -> None:
-    if booking_id in bookings:
-        del bookings[booking_id]
-        logger.debug(f"Заявка {booking_id} удалена из хранилища.")
-
-
 @bot.callback_query_handler(func=lambda call: (call.data or "").startswith("approve_alt_"))
 def handle_approve_alt_callback(call: CallbackQuery) -> None:
     data = call.data or ""
@@ -55,11 +40,14 @@ def handle_approve_alt_callback(call: CallbackQuery) -> None:
 
     logger.info(f"Получен callback approve_alt для заявки {booking_id}")
 
+    suggested_time = (datetime.now() + timedelta(hours=2)).strftime("%d.%m.%y %H:%M")
+
     msg = bot.send_message(
         ADMIN_GROUP_ID,
-        f"Введите новую дату и время в формате 15.09.25 16:43 для заявки (ID: {booking.id}).\n"
+        f"Введите новую дату и время в формате {suggested_time} для заявки (ID: {booking.id}).\n"
         f"(ответьте на это сообщение):",
     )
+    register_ephemeral_message(booking_id, msg)
     alt_requests[booking_id] = msg.message_id
     logger.info(
         f"Инструкция для изменения даты/времени отправлена в админ-группу для заявки {booking_id}, message_id: {msg.message_id}"
@@ -87,6 +75,7 @@ def handle_approve_callback(call: CallbackQuery) -> None:
             f"(или ответьте на это сообщение с номерами столов через пробел):",
             reply_markup=kb,
         )
+        register_ephemeral_message(booking_id, msg)
         table_requests[booking_id] = msg.message_id
         logger.debug(f"Отправлено сообщение выбора стола для {booking_id}, message_id: {msg.message_id}")
         bot.answer_callback_query(call.id, "Выберите номер стола")
@@ -104,44 +93,15 @@ def handle_reject_callback(call: CallbackQuery) -> None:
         return
 
     logger.info(f"Получен callback reject для заявки {booking_id}")
-
-    user_id = booking.user_id
-    name = booking.name
-    phone = booking.phone
-    formatted_date = format_date_russian(booking.date_time)
-    time_str = booking.date_time.strftime('%H:%M')
-
-    text_to_user = (
-        f"❌ Извините, {name}. Ваша бронь на {formatted_date} в {time_str} была отклонена."
-    )
-    if booking.source == Source.TG:
-        text_to_user += "\nДля новой брони введите /start"
-        bot.send_message(user_id, text_to_user)
-        logger.info(f"Заявка {booking_id} отклонена. Пользователь {user_id} уведомлён.")
-    else:
-        sent = send_vk_message(booking.user_id, text_to_user)
-        logger.info(
-            f"Заявка {booking_id} отклонена. VK-пользователь {booking.user_id} уведомлён: {sent}."
-        )
-
-    new_text = (
-        "❌ *Заявка брони отклонена:*\n"
-        f"🆔 ID: {booking.id}\n"
-        f"👤 Имя: {booking.name}\n"
-        f"👥 Количество гостей: {booking.guests}\n"
-        f"📞 Телефон: {phone}\n"
-        f"📅 Дата: {formatted_date}\n"
-        f"⏰ Время: {time_str}\n"
-        f"🌐 Источник: {booking.source.value}"
-    )
+    notify_user_booking_status(booking, False)
 
     try:
-        _edit_booking_message(call, booking, new_text)
+        set_final_booking_text(call.message.chat.id, booking, False)
     except Exception:
         return
 
     bot.answer_callback_query(call.id, "Обработано.")
-    _remove_booking_from_storage(booking.id)
+    finalize_booking_actions(booking.id)
 
 @bot.message_handler(func=lambda message: message.chat.id == ADMIN_GROUP_ID and
                                           message.reply_to_message and
@@ -163,26 +123,26 @@ def handle_table_selection_reply(message: Message) -> None:
         bot.reply_to(message, "Заявка не найдена.", show_alert=True)
         return
 
+    register_ephemeral_message(booking_id, message)
+
     try:
         assert message.text is not None
-        table_numbers = [int(el) for el in message.text.split()]
+        table_numbers = {int(el) for el in message.text.split()}
     except (ValueError, AssertionError):
-        bot.reply_to(message, "Пожалуйста, вводите только числа через пробел.")
+        register_ephemeral_message(booking_id,
+                                   bot.reply_to(message, "Пожалуйста, вводите только числа через пробел."))
         return
 
     if any(num not in storage.actual_tables for num in table_numbers):
-        bot.reply_to(message, "Пожалуйста введите только доступные номера столов")
+        register_ephemeral_message(booking_id,
+                                   bot.reply_to(message, "Пожалуйста введите только доступные номера столов"))
         return
 
-    booking.tables_number = table_numbers
+    booking.table_numbers = table_numbers
 
-    prompt_id = table_requests.pop(booking.id, None)
     finalize_booking_approval(
         booking,
-        table_value=", ".join(str(x) for x in table_numbers),
         admin_chat_id=message.chat.id,
-        prompt_message_id=prompt_id,
-        extra_admin_message_ids=(message.message_id,),
     )
 
 
@@ -207,15 +167,10 @@ def handle_table_selection(call: CallbackQuery) -> None:
         return
 
 
-    booking.tables_number = [table_num]
-
-    table_text = "Любой" if table_num == -1 else str(table_num)
-    prompt_id = table_requests.pop(booking.id, None)
+    booking.table_numbers = {table_num}
     finalize_booking_approval(
         booking,
-        table_value=table_text,
         admin_chat_id=call.message.chat.id,
-        prompt_message_id=prompt_id,
     )
 
     bot.answer_callback_query(call.id, "Стол выбран, бронь подтверждена.")
@@ -236,17 +191,19 @@ def handle_alt_date_time(message: Message) -> None:
     logger.info(
         f"Для заявки {booking_id} получено ответное сообщение для изменения даты/времени: {message.text}"
     )
-
     booking = bookings.get(booking_id)
     if not booking:
         logger.error(f"Заявка с id {booking_id} не найдена при обновлении даты/времени.")
         bot.reply_to(message, "Заявка не найдена.")
         return
 
+    register_ephemeral_message(booking_id, message)
     new_date_time = parse_date_time(message.text)
     if new_date_time is None:
         logger.error(f"Ошибка парсинга даты/времени для заявки {booking_id}: {message.text}")
-        bot.reply_to(message, "Неверный формат даты/времени. Попробуйте снова.\nОжидаемый формат: MM.DD.YY HH:MM")
+        register_ephemeral_message(booking_id,
+                                   bot.reply_to(message,
+                                                "Неверный формат даты/времени. Попробуйте снова.\nОжидаемый формат: MM.DD.YY HH:MM"))
         return
 
     booking.date_time = new_date_time
@@ -260,22 +217,10 @@ def handle_alt_date_time(message: Message) -> None:
             f"(или ответьте на это сообщение с номерами столов через пробел):",
             reply_markup=kb,
         )
+        register_ephemeral_message(booking_id, msg)
         table_requests[booking_id] = msg.message_id
-        logger.debug(f"Отправлено сообщение выбора стола после изменения даты/времени для {booking_id}, message_id: {msg.message_id}")
     except Exception:
         logger.exception("Не удалось отправить клавиатуру выбора стола после approve_alt для заявки %s", booking_id)
-
-    # Clean up prompt and reply messages
-    try:
-        bot.delete_message(ADMIN_GROUP_ID, alt_requests[booking_id])
-        logger.debug(f"Сообщение с запросом для заявки {booking_id} удалено.")
-    except Exception as e:
-        logger.error(f"Ошибка удаления сообщения запроса для заявки {booking_id}: {e}")
-    try:
-        bot.delete_message(ADMIN_GROUP_ID, message.message_id)
-        logger.debug(f"Ответное сообщение для заявки {booking_id} удалено.")
-    except Exception as e:
-        logger.error(f"Ошибка удаления ответного сообщения для заявки {booking_id}: {e}")
 
     del alt_requests[booking_id]
     logger.debug(f"Заявка {booking_id}: дата/время обновлены, ожидается выбор стола.")
