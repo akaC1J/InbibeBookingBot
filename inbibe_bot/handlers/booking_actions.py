@@ -30,7 +30,7 @@ def _notify_user_booking_approved(booking: Booking, formatted_date: str, time_st
             logger.exception("Не удалось отправить подтверждение пользователю VK %s", booking.user_id)
 
 
-def _build_admin_confirmation_text(booking: Booking, table_label: str, table_value: str) -> str:
+def _build_admin_confirmation_text(booking: Booking, table_value: str) -> str:
     return (
         "✅ *Заявка брони подтверждена:*\n"
         f"🆔 ID: {booking.id}\n"
@@ -39,7 +39,7 @@ def _build_admin_confirmation_text(booking: Booking, table_label: str, table_val
         f"📞 Телефон: {booking.phone}\n"
         f"📅 Дата: {format_date_russian(booking.date_time)}\n"
         f"⏰ Время: {booking.date_time.strftime('%H:%M')}\n"
-        f"{table_label}: {table_value}\n"
+        f"🪑 Столы: {table_value}\n"
         f"🌐 Источник: {booking.source.value}"
     )
 
@@ -47,7 +47,6 @@ def _build_admin_confirmation_text(booking: Booking, table_label: str, table_val
 def finalize_booking_approval(
     booking: Booking,
     *,
-    table_label: str,
     table_value: str,
     admin_chat_id: int,
     prompt_message_id: Optional[int] = None,
@@ -60,7 +59,7 @@ def finalize_booking_approval(
 
     _notify_user_booking_approved(booking, formatted_date, time_str)
 
-    new_text = _build_admin_confirmation_text(booking, table_label, table_value)
+    new_text = _build_admin_confirmation_text(booking, table_value)
     try:
         bot.edit_message_text(new_text, chat_id=admin_chat_id, message_id=booking.message_id or -1)
     except Exception as exc:

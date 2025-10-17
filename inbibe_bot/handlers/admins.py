@@ -156,7 +156,6 @@ def handle_table_selection_reply(message: Message) -> None:
     prompt_id = table_requests.pop(booking.id, None)
     finalize_booking_approval(
         booking,
-        table_label="🪑 Столы",
         table_value=", ".join(str(x) for x in table_numbers),
         admin_chat_id=message.chat.id,
         prompt_message_id=prompt_id,
@@ -191,7 +190,6 @@ def handle_table_selection(call: CallbackQuery) -> None:
     prompt_id = table_requests.pop(booking.id, None)
     finalize_booking_approval(
         booking,
-        table_label="🪑 Стол",
         table_value=table_text,
         admin_chat_id=call.message.chat.id,
         prompt_message_id=prompt_id,
@@ -229,8 +227,6 @@ def handle_alt_date_time(message: Message) -> None:
         return
 
     booking.date_time = new_date_time
-    formatted_date = format_date_russian(new_date_time)
-    time_str = new_date_time.time().strftime('%H:%M')
 
     # Ask admin to choose a table number now
     try:
