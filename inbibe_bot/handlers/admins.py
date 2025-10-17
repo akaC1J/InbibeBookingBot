@@ -1,4 +1,6 @@
 import logging
+from typing import Optional
+
 import telebot
 
 from telebot.types import CallbackQuery, Message
@@ -7,118 +9,139 @@ from inbibe_bot import storage
 from inbibe_bot.bot_instance import bot, ADMIN_GROUP_ID
 from inbibe_bot.handlers.booking_actions import finalize_booking_approval
 from inbibe_bot.keyboards import build_table_keyboard
-from inbibe_bot.models import Source
+from inbibe_bot.models import Booking, Source
 from inbibe_bot.storage import bookings, alt_requests, table_requests
 from inbibe_bot.utils import format_date_russian, parse_date_time, send_vk_message
 
 logger = logging.getLogger(__name__)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("approve_alt_") or
-                                              call.data.startswith("approve_") or
-                                              call.data.startswith("reject_"))
-def callback_handler(call: CallbackQuery) -> None:
-    data = call.data
-    if data is None:
-        logger.error(f"Неверный callback id: {call.id}")
-        return
+def _extract_booking_id(data: str, prefix: str) -> str:
+    return data[len(prefix):]
 
-    logger.info(f"Получен callback с данными: {data}")
 
-    if data.startswith("approve_alt_"):
-        booking_id = data.split("_", 2)[2]
-        booking = bookings.get(booking_id)
-        if not booking:
-            logger.error(f"Заявка с id {booking_id} не найдена для изменения даты/времени.")
-            bot.answer_callback_query(call.id, "Заявка не найдена.", show_alert=True)
-            return
-        msg = bot.send_message(
-            ADMIN_GROUP_ID,
-            f"Введите новую дату и время в формате 15.09.25 16:43 для заявки (ID: {booking.id}).\n"
-            f"(ответьте на это сообщение):",
-        )
-        alt_requests[booking_id] = msg.message_id
-        logger.info(
-            f"Инструкция для изменения даты/времени отправлена в админ-группу для заявки {booking_id}, message_id: {msg.message_id}"
-        )
-        bot.answer_callback_query(call.id, "Ожидается новая дата/время.")
-        return
+def _get_booking_or_alert(call: CallbackQuery, booking_id: str, action_description: str) -> Optional[Booking]:
+    booking = bookings.get(booking_id)
+    if booking:
+        return booking
 
-    if data.startswith("approve_"):
-        booking_id = data.split("_", 1)[1]
-        booking = bookings.get(booking_id)
-        if not booking :
-            logger.error(f"Заявка с id {booking_id} не найдена для подтверждения.")
-            bot.answer_callback_query(call.id, "Заявка не найдена.", show_alert=True)
-            return
-        # Ask for table selection instead of immediate approval
-        try:
-            kb = build_table_keyboard(booking_id, storage.actual_tables)
-            msg = bot.send_message(
-                ADMIN_GROUP_ID,
-                f"Выберите номер стола для заявки (ID: {booking.id})\n"
-                f"(или ответьте на это сообщение с номерами столов через пробел):",
-                reply_markup=kb,
-            )
-            table_requests[booking_id] = msg.message_id
-            logger.debug(f"Отправлено сообщение выбора стола для {booking_id}, message_id: {msg.message_id}")
-            bot.answer_callback_query(call.id, "Выберите номер стола")
-        except Exception:
-            logger.exception("Не удалось отправить клавиатуру выбора стола для заявки %s", booking_id)
-            bot.answer_callback_query(call.id, "Ошибка при отправке клавиатуры", show_alert=True)
-        return
-    elif data.startswith("reject_"):
-        booking_id = data.split("_", 1)[1]
-        booking = bookings.get(booking_id)
-        if not booking:
-            logger.error(f"Заявка с id {booking_id} не найдена для отклонения.")
-            bot.answer_callback_query(call.id, "Заявка не найдена.", show_alert=True)
-            return
-        user_id = booking.user_id
-        name = booking.name
-        phone = booking.phone
-        formatted_date = format_date_russian(booking.date_time)
-        time_str = booking.date_time.strftime('%H:%M')
+    logger.error(f"Заявка с id {booking_id} не найдена для {action_description}.")
+    bot.answer_callback_query(call.id, "Заявка не найдена.", show_alert=True)
+    return None
 
-        text_to_user = (
-            f"❌ Извините, {name}. Ваша бронь на {formatted_date} в {time_str} была отклонена."
-        )
-        if booking.source == Source.TG:
-            text_to_user += "\nДля новой брони введите /start"
-            bot.send_message(user_id, text_to_user)
-            logger.info(f"Заявка {booking_id} отклонена. Пользователь {user_id} уведомлён.")
-        else:
-            sent = send_vk_message(booking.user_id, text_to_user)
-            logger.info(
-                f"Заявка {booking_id} отклонена. VK-пользователь {booking.user_id} уведомлён: {sent}."
-            )
 
-        new_text = (
-            "❌ *Заявка брони отклонена:*\n"
-            f"🆔 ID: {booking.id}\n"
-            f"👤 Имя: {booking.name}\n"
-            f"👥 Количество гостей: {booking.guests}\n"
-            f"📞 Телефон: {phone}\n"
-            f"📅 Дата: {formatted_date}\n"
-            f"⏰ Время: {time_str}\n"
-            f"🌐 Источник: {booking.source.value}"
-        )
-
-    # noinspection PyUnboundLocalVariable
-    assert booking is not None
+def _edit_booking_message(call: CallbackQuery, booking: Booking, new_text: str) -> None:
     try:
-        # noinspection PyUnboundLocalVariable
         bot.edit_message_text(new_text, chat_id=call.message.chat.id, message_id=booking.message_id or -1)
         logger.debug(f"Отредактировано сообщение заявки {booking.id}: {new_text}")
-    except Exception as e:
-        logger.error(f"Ошибка редактирования сообщения для заявки {booking.id}: {e}")
+    except Exception as exc:
+        logger.error(f"Ошибка редактирования сообщения для заявки {booking.id}: {exc}")
+        raise
+
+
+def _remove_booking_from_storage(booking_id: str) -> None:
+    if booking_id in bookings:
+        del bookings[booking_id]
+        logger.debug(f"Заявка {booking_id} удалена из хранилища.")
+
+
+@bot.callback_query_handler(func=lambda call: (call.data or "").startswith("approve_alt_"))
+def handle_approve_alt_callback(call: CallbackQuery) -> None:
+    data = call.data or ""
+    booking_id = _extract_booking_id(data, "approve_alt_")
+    booking = _get_booking_or_alert(call, booking_id, "изменения даты/времени")
+    if not booking:
+        return
+
+    logger.info(f"Получен callback approve_alt для заявки {booking_id}")
+
+    msg = bot.send_message(
+        ADMIN_GROUP_ID,
+        f"Введите новую дату и время в формате 15.09.25 16:43 для заявки (ID: {booking.id}).\n"
+        f"(ответьте на это сообщение):",
+    )
+    alt_requests[booking_id] = msg.message_id
+    logger.info(
+        f"Инструкция для изменения даты/времени отправлена в админ-группу для заявки {booking_id}, message_id: {msg.message_id}"
+    )
+    bot.answer_callback_query(call.id, "Ожидается новая дата/время.")
+
+
+@bot.callback_query_handler(
+    func=lambda call: (call.data or "").startswith("approve_") and not (call.data or "").startswith("approve_alt_")
+)
+def handle_approve_callback(call: CallbackQuery) -> None:
+    data = call.data or ""
+    booking_id = _extract_booking_id(data, "approve_")
+    booking = _get_booking_or_alert(call, booking_id, "подтверждения")
+    if not booking:
+        return
+
+    logger.info(f"Получен callback approve для заявки {booking_id}")
+
+    try:
+        kb = build_table_keyboard(booking_id, storage.actual_tables)
+        msg = bot.send_message(
+            ADMIN_GROUP_ID,
+            f"Выберите номер стола для заявки (ID: {booking.id})\n"
+            f"(или ответьте на это сообщение с номерами столов через пробел):",
+            reply_markup=kb,
+        )
+        table_requests[booking_id] = msg.message_id
+        logger.debug(f"Отправлено сообщение выбора стола для {booking_id}, message_id: {msg.message_id}")
+        bot.answer_callback_query(call.id, "Выберите номер стола")
+    except Exception:
+        logger.exception("Не удалось отправить клавиатуру выбора стола для заявки %s", booking_id)
+        bot.answer_callback_query(call.id, "Ошибка при отправке клавиатуры", show_alert=True)
+
+
+@bot.callback_query_handler(func=lambda call: (call.data or "").startswith("reject_"))
+def handle_reject_callback(call: CallbackQuery) -> None:
+    data = call.data or ""
+    booking_id = _extract_booking_id(data, "reject_")
+    booking = _get_booking_or_alert(call, booking_id, "отклонения")
+    if not booking:
+        return
+
+    logger.info(f"Получен callback reject для заявки {booking_id}")
+
+    user_id = booking.user_id
+    name = booking.name
+    phone = booking.phone
+    formatted_date = format_date_russian(booking.date_time)
+    time_str = booking.date_time.strftime('%H:%M')
+
+    text_to_user = (
+        f"❌ Извините, {name}. Ваша бронь на {formatted_date} в {time_str} была отклонена."
+    )
+    if booking.source == Source.TG:
+        text_to_user += "\nДля новой брони введите /start"
+        bot.send_message(user_id, text_to_user)
+        logger.info(f"Заявка {booking_id} отклонена. Пользователь {user_id} уведомлён.")
+    else:
+        sent = send_vk_message(booking.user_id, text_to_user)
+        logger.info(
+            f"Заявка {booking_id} отклонена. VK-пользователь {booking.user_id} уведомлён: {sent}."
+        )
+
+    new_text = (
+        "❌ *Заявка брони отклонена:*\n"
+        f"🆔 ID: {booking.id}\n"
+        f"👤 Имя: {booking.name}\n"
+        f"👥 Количество гостей: {booking.guests}\n"
+        f"📞 Телефон: {phone}\n"
+        f"📅 Дата: {formatted_date}\n"
+        f"⏰ Время: {time_str}\n"
+        f"🌐 Источник: {booking.source.value}"
+    )
+
+    try:
+        _edit_booking_message(call, booking, new_text)
+    except Exception:
         return
 
     bot.answer_callback_query(call.id, "Обработано.")
-
-    if booking.id in bookings:
-        del bookings[booking.id]
-        logger.debug(f"Заявка {booking.id} удалена из хранилища.")
+    _remove_booking_from_storage(booking.id)
 
 @bot.message_handler(func=lambda message: message.chat.id == ADMIN_GROUP_ID and
                                           message.reply_to_message and
