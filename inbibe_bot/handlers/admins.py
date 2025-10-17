@@ -160,7 +160,7 @@ def handle_table_selection_reply(message: Message) -> None:
     booking = bookings.get(booking_id)
     if not booking:
         logging.error("Бронирование %s не найдено при выборе стола", booking_id)
-        bot.reply_to(message, "Заявка не найдена.", show_alert=True)
+        bot.reply_to(message, "Заявка не найдена.")
         return
 
     try:
