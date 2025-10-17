@@ -125,3 +125,18 @@ def generate_time_keyboard(booking_date: date) -> telebot.types.InlineKeyboardMa
     if row:
         markup.row(*row)
     return markup
+
+def build_table_keyboard(booking_id: str, tables_number: list[int]) -> telebot.types.InlineKeyboardMarkup:
+    markup = telebot.types.InlineKeyboardMarkup(row_width=5)
+
+    # Создаём кнопки от 1 до table_count
+    buttons = [
+        telebot.types.InlineKeyboardButton(text=str(num), callback_data=f"table_{booking_id}_{num}")
+        for num in tables_number
+    ]
+
+    # Раскладываем кнопки по рядам по 5 штук
+    for i in range(0, len(buttons), 5):
+        markup.row(*buttons[i:i + 5])
+
+    return markup

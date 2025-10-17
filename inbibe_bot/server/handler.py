@@ -1,19 +1,18 @@
 from __future__ import annotations
 
 import json
-import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler
-from typing import Any, TypedDict, TypeAlias, cast
+from typing import Any, TypeAlias
 
 import telebot
 
+from inbibe_bot import storage
 from inbibe_bot import utils
 from inbibe_bot.bot_instance import bot, ADMIN_GROUP_ID
 from inbibe_bot.models import Booking, Source
 from inbibe_bot.server.model import BookingResponse, BookingRequest, BookingValidationError
-from inbibe_bot.storage import bookings, ready_bookings, ready_delivered_ids
 from inbibe_bot.utils import format_date_russian
 
 # === Типы ====================================================================
@@ -80,11 +79,11 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/bookings":
             # return only approved bookings that have not been delivered yet
             new_bookings = [
-                b.to_dict() for b in ready_bookings if b.id not in ready_delivered_ids
+                b.to_dict() for b in storage.not_sent_bookings
             ]
-            for b in new_bookings:
-                ready_delivered_ids.add(b["id"])
             self._send_raw_json(200, new_bookings)
+            storage.not_sent_bookings = []
+
         else:
             self.not_found()
 
@@ -112,7 +111,7 @@ class Handler(BaseHTTPRequestHandler):
                           source=Source.VK
                           )
 
-        bookings[booking.id] = booking
+        storage.bookings[booking.id] = booking
 
         booking_text = (
             f"📥 Новая бронь (VK):\n"

@@ -3,35 +3,14 @@ import telebot
 
 from telebot.types import CallbackQuery, Message
 
+from inbibe_bot import storage
 from inbibe_bot.bot_instance import bot, ADMIN_GROUP_ID
+from inbibe_bot.keyboards import build_table_keyboard
 from inbibe_bot.models import Source
-from inbibe_bot.storage import bookings, alt_requests, ready_bookings, table_requests
+from inbibe_bot.storage import bookings, alt_requests, not_sent_bookings, table_requests
 from inbibe_bot.utils import format_date_russian, parse_date_time, send_vk_message
 
 logger = logging.getLogger(__name__)
-
-
-def _build_table_keyboard(booking_id: str, table_count: int) -> telebot.types.InlineKeyboardMarkup:
-    markup = telebot.types.InlineKeyboardMarkup(row_width=5)
-
-    # Создаём кнопки от 1 до table_count
-    buttons = [
-        telebot.types.InlineKeyboardButton(text=str(i), callback_data=f"table_{booking_id}_{i}")
-        for i in range(1, table_count + 1)
-    ]
-
-    # Кнопка "Любой"
-    any_btn = telebot.types.InlineKeyboardButton(text="Любой", callback_data=f"table_{booking_id}_any")
-
-    # Раскладываем кнопки по рядам по 5 штук
-    for i in range(0, table_count, 5):
-        markup.row(*buttons[i:i + 5])
-
-    # Добавляем кнопку "Любой" в отдельной строке
-    markup.row(any_btn)
-
-    return markup
-
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("approve_alt_") or
@@ -73,10 +52,11 @@ def callback_handler(call: CallbackQuery) -> None:
             return
         # Ask for table selection instead of immediate approval
         try:
-            kb = _build_table_keyboard(booking_id, 25)
+            kb = build_table_keyboard(booking_id, storage.actual_tables)
             msg = bot.send_message(
                 ADMIN_GROUP_ID,
-                f"Выберите номер стола для заявки (ID: {booking.id}):",
+                f"Выберите номер стола для заявки (ID: {booking.id})\n"
+                f"(или ответьте на это сообщение с номерами столов через пробел):",
                 reply_markup=kb,
             )
             table_requests[booking_id] = msg.message_id
@@ -139,6 +119,97 @@ def callback_handler(call: CallbackQuery) -> None:
         del bookings[booking.id]
         logger.debug(f"Заявка {booking.id} удалена из хранилища.")
 
+@bot.message_handler(func=lambda message: message.chat.id == ADMIN_GROUP_ID and
+                                          message.reply_to_message and
+                                          message.reply_to_message.message_id in table_requests.values())
+def handle_table_selection_reply(message: Message) -> None:
+    booking_id = None
+    for b_id, msg_id in table_requests.items():
+        if message.reply_to_message and msg_id == message.reply_to_message.message_id:
+            booking_id = b_id
+            break
+
+    if not booking_id:
+        logger.error("Не удалось определить booking_id по message.reply_to_message.message_id.")
+        return
+
+    booking = bookings.get(booking_id)
+    if not booking:
+        logging.error("Бронирование %s не найдено при выборе стола", booking_id)
+        bot.reply_to(message, "Заявка не найдена.", show_alert=True)
+        return
+
+    try:
+        assert message.text is not None
+        table_numbers = [int(el) for el in message.text.split()]
+    except (ValueError, AssertionError):
+        bot.reply_to(message, "Пожалуйста, вводите только числа через пробел.")
+        return
+
+    if any(num not in storage.actual_tables for num in table_numbers):
+        bot.reply_to(message, "Пожалуйста введите только доступные номера столов")
+
+    booking.tables_number = table_numbers
+
+    formatted_date = format_date_russian(booking.date_time)
+    time_str = booking.date_time.strftime('%H:%M')
+
+    # Notify user
+    text_to_user = (
+        f"✅ {booking.name}, ваша бронь на {formatted_date} в {time_str} подтверждена."
+    )
+    if booking.source == Source.TG:
+        text_to_user += "\nДля новой брони введите /start"
+        try:
+            bot.send_message(booking.user_id, text_to_user)
+        except Exception:
+            logging.exception("Не удалось отправить подтверждение пользователю TG %s", booking.user_id)
+    else:
+        try:
+            send_vk_message(booking.user_id, text_to_user)
+        except Exception:
+            logging.exception("Не удалось отправить подтверждение пользователю VK %s", booking.user_id)
+
+    # Edit admin message to approved
+    table_text = ", " .join(str(x) for x in table_numbers)
+    new_text = (
+        "✅ *Заявка брони подтверждена:*\n"
+        f"🆔 ID: {booking.id}\n"
+        f"👤 Имя: {booking.name}\n"
+        f"👥 Количество гостей: {booking.guests}\n"
+        f"📞 Телефон: {booking.phone}\n"
+        f"📅 Дата: {formatted_date}\n"
+        f"⏰ Время: {time_str}\n"
+        f"🪑 Столы: {table_text}\n"
+        f"🌐 Источник: {booking.source.value}"
+    )
+    try:
+        bot.edit_message_text(new_text, chat_id=message.chat.id, message_id=booking.message_id or -1)
+    except Exception as e:
+        logging.error("Ошибка редактирования сообщения для заявки %s: %s", booking.id, e)
+
+    # Delete the admin prompt message for table selection
+    try:
+        prompt_id = table_requests.pop(booking.id, None)
+        if prompt_id:
+            bot.delete_message(ADMIN_GROUP_ID, prompt_id)
+            bot.delete_message(ADMIN_GROUP_ID, message.message_id)
+            logging.debug("Сообщение выбора стола для заявки %s (message_id=%s) удалено", booking.id, prompt_id)
+    except Exception as e:
+        logging.error("Ошибка удаления сообщения выбора стола для заявки %s: %s", booking.id, e)
+
+    # Enqueue and cleanup
+    try:
+        not_sent_bookings.append(booking)
+    except Exception:
+        logging.exception("Failed to enqueue approved booking %s", booking.id)
+
+    if booking.id in bookings:
+        try:
+            del bookings[booking.id]
+        except Exception:
+            logging.exception("Не удалось удалить заявку %s из хранилища", booking.id)
+
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("table_"))
 def handle_table_selection(call: CallbackQuery) -> None:
@@ -153,15 +224,15 @@ def handle_table_selection(call: CallbackQuery) -> None:
         logging.error("Бронирование %s не найдено при выборе стола", booking_id)
         bot.answer_callback_query(call.id, "Заявка не найдена.", show_alert=True)
         return
-    if tail == "any":
-        table_num = -1
-    else:
-        try:
-            table_num = int(tail)
-        except ValueError:
-            bot.answer_callback_query(call.id, "Неверный номер стола.", show_alert=True)
-            return
-    booking.table_number = table_num
+
+    try:
+        table_num = int(tail)
+    except ValueError:
+        bot.answer_callback_query(call.id, "Неверный номер стола.", show_alert=True)
+        return
+
+
+    booking.tables_number = [table_num]
 
     formatted_date = format_date_russian(booking.date_time)
     time_str = booking.date_time.strftime('%H:%M')
@@ -211,7 +282,7 @@ def handle_table_selection(call: CallbackQuery) -> None:
 
     # Enqueue and cleanup
     try:
-        ready_bookings.append(booking)
+        not_sent_bookings.append(booking)
     except Exception:
         logging.exception("Failed to enqueue approved booking %s", booking.id)
 
@@ -258,10 +329,11 @@ def handle_alt_date_time(message: Message) -> None:
 
     # Ask admin to choose a table number now
     try:
-        kb = _build_table_keyboard(booking_id, 25)
+        kb = build_table_keyboard(booking_id, storage.actual_tables)
         msg = bot.send_message(
             ADMIN_GROUP_ID,
-            f"Дата/время обновлены. Выберите номер стола для заявки (ID: {booking.id}):",
+            f"Дата/время обновлены. Выберите номер стола для заявки (ID: {booking.id}):"
+            f"(или ответьте на это сообщение с номерами столов через пробел):",
             reply_markup=kb,
         )
         table_requests[booking_id] = msg.message_id
