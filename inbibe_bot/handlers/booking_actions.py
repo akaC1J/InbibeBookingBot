@@ -9,6 +9,7 @@ from inbibe_bot.bot_instance import bot
 from inbibe_bot.models import Booking, Source
 from inbibe_bot.storage import bookings, not_sent_bookings
 from inbibe_bot.utils import format_date_russian, send_vk_message
+from inbibe_bot.temporary_messages import clear_ephemeral_messages
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,8 @@ def finalize_booking_approval(
     extra_admin_message_ids: Iterable[int] = (),
 ) -> None:
     """Finalize the booking approval workflow shared across admin handlers."""
+
+    clear_ephemeral_messages(booking.id)
 
     formatted_date = format_date_russian(booking.date_time)
     time_str = booking.date_time.strftime("%H:%M")

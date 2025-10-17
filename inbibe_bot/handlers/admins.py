@@ -12,6 +12,7 @@ from inbibe_bot.keyboards import build_table_keyboard
 from inbibe_bot.models import Booking, Source
 from inbibe_bot.storage import bookings, alt_requests, table_requests
 from inbibe_bot.utils import format_date_russian, parse_date_time, send_vk_message
+from inbibe_bot.temporary_messages import clear_ephemeral_messages, send_ephemeral_reply
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +158,8 @@ def handle_table_selection_reply(message: Message) -> None:
         logger.error("Не удалось определить booking_id по message.reply_to_message.message_id.")
         return
 
+    clear_ephemeral_messages(booking_id)
+
     booking = bookings.get(booking_id)
     if not booking:
         logging.error("Бронирование %s не найдено при выборе стола", booking_id)
@@ -167,11 +170,11 @@ def handle_table_selection_reply(message: Message) -> None:
         assert message.text is not None
         table_numbers = [int(el) for el in message.text.split()]
     except (ValueError, AssertionError):
-        bot.reply_to(message, "Пожалуйста, вводите только числа через пробел.")
+        send_ephemeral_reply(booking_id, message, "Пожалуйста, вводите только числа через пробел.")
         return
 
     if any(num not in storage.actual_tables for num in table_numbers):
-        bot.reply_to(message, "Пожалуйста введите только доступные номера столов")
+        send_ephemeral_reply(booking_id, message, "Пожалуйста введите только доступные номера столов")
         return
 
     booking.tables_number = table_numbers
@@ -211,6 +214,7 @@ def handle_table_selection(call: CallbackQuery) -> None:
 
     table_text = "Любой" if table_num == -1 else str(table_num)
     prompt_id = table_requests.pop(booking.id, None)
+    clear_ephemeral_messages(booking.id)
     finalize_booking_approval(
         booking,
         table_value=table_text,
@@ -237,6 +241,8 @@ def handle_alt_date_time(message: Message) -> None:
         f"Для заявки {booking_id} получено ответное сообщение для изменения даты/времени: {message.text}"
     )
 
+    clear_ephemeral_messages(booking_id)
+
     booking = bookings.get(booking_id)
     if not booking:
         logger.error(f"Заявка с id {booking_id} не найдена при обновлении даты/времени.")
@@ -246,7 +252,11 @@ def handle_alt_date_time(message: Message) -> None:
     new_date_time = parse_date_time(message.text)
     if new_date_time is None:
         logger.error(f"Ошибка парсинга даты/времени для заявки {booking_id}: {message.text}")
-        bot.reply_to(message, "Неверный формат даты/времени. Попробуйте снова.\nОжидаемый формат: MM.DD.YY HH:MM")
+        send_ephemeral_reply(
+            booking_id,
+            message,
+            "Неверный формат даты/времени. Попробуйте снова.\nОжидаемый формат: MM.DD.YY HH:MM",
+        )
         return
 
     booking.date_time = new_date_time
