@@ -36,7 +36,7 @@ class Booking:
 class UserStateData:
     name: str = ""
     phone: str = ""
-    date_time: datetime = datetime.now()
+    date_time: datetime = field(default_factory=datetime.now)
     guests: int = 0
 
 

@@ -50,15 +50,18 @@ def notify_user_booking_status(
 
 
 def _build_admin_final_text(booking: Booking, is_success: bool) -> str:
+    status_line = "✅ *Заявка брони подтверждена:*" if is_success else "❌ *Заявка брони отклонена:*"
+    tables = ", ".join(str(x) for x in sorted(booking.table_numbers)) or "—"
+
     return (
-        f"{"✅ *Заявка брони подтверждена:*" if is_success else "❌ *Заявка брони отклонена:*"}\n"
+        f"{status_line}\n"
         f"🆔 ID: {booking.id}\n"
         f"👤 Имя: {booking.name}\n"
         f"👥 Количество гостей: {booking.guests}\n"
         f"📞 Телефон: {booking.phone}\n"
         f"📅 Дата: {format_date_russian(booking.date_time)}\n"
         f"⏰ Время: {booking.date_time.strftime('%H:%M')}\n"
-        f"🪑 Столы: {", ".join(str(x) for x in booking.table_numbers)}\n"
+        f"🪑 Столы: {tables}\n"
         f"🌐 Источник: {booking.source.value}"
     )
 

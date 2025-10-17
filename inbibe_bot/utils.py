@@ -31,7 +31,7 @@ def send_vk_message(user_id: int, message: str) -> bool:
         data = resp.json()
         return "response" in data and isinstance(data["response"], int)
     except Exception:
-        logging.warn(f"Сообщение пользователю {user_id} не было отправлено")
+        logging.warning(f"Сообщение пользователю {user_id} не было отправлено")
         return False
 
 
