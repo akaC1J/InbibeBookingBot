@@ -3,95 +3,98 @@
 from __future__ import annotations
 
 import logging
-from typing import Iterable, Optional
 
 from inbibe_bot.bot_instance import bot
 from inbibe_bot.models import Booking, Source
-from inbibe_bot.storage import bookings, not_sent_bookings
+from inbibe_bot.storage import bookings, not_sent_bookings, table_requests, alt_requests
 from inbibe_bot.utils import format_date_russian, send_vk_message
 from inbibe_bot.temporary_messages import clear_ephemeral_messages
 
 logger = logging.getLogger(__name__)
 
 
-def _notify_user_booking_approved(booking: Booking, formatted_date: str, time_str: str) -> None:
-    """Send confirmation message to the user about an approved booking."""
+def notify_user_booking_status(
+        booking: Booking,
+        approved: bool,
+) -> None:
+    """Отправить пользователю уведомление о результате брони."""
 
-    text_to_user = f"✅ {booking.name}, ваша бронь на {formatted_date} в {time_str} подтверждена."
+    formatted_date = format_date_russian(booking.date_time)
+    time_str = booking.date_time.strftime("%H:%M")
+
+    if approved:
+        text_to_user = f"✅ {booking.name}, ваша бронь на {formatted_date} в {time_str} подтверждена."
+        log_action = "подтверждена"
+    else:
+        text_to_user = f"❌ Извините, {booking.name}. Ваша бронь на {formatted_date} в {time_str} была отклонена."
+        log_action = "отклонена"
+
     if booking.source == Source.TG:
         text_to_user += "\nДля новой брони введите /start"
         try:
             bot.send_message(booking.user_id, text_to_user)
+            logger.info("Заявка %s %s. Пользователь TG %s уведомлён.", booking.id, log_action, booking.user_id)
         except Exception:
-            logger.exception("Не удалось отправить подтверждение пользователю TG %s", booking.user_id)
+            logger.exception("Не удалось уведомить пользователя TG %s о том, что заявка %s.", booking.user_id,
+                             log_action)
     else:
         try:
-            send_vk_message(booking.user_id, text_to_user)
+            sent = send_vk_message(booking.user_id, text_to_user)
+            logger.info(
+                "Заявка %s %s. VK-пользователь %s уведомлён: %s.",
+                booking.id, log_action, booking.user_id, sent,
+            )
         except Exception:
-            logger.exception("Не удалось отправить подтверждение пользователю VK %s", booking.user_id)
+            logger.exception("Не удалось уведомить пользователя VK %s о том, что заявка %s.", booking.user_id,
+                             log_action)
 
 
-def _build_admin_confirmation_text(booking: Booking, table_value: str) -> str:
+def _build_admin_final_text(booking: Booking, is_success: bool) -> str:
     return (
-        "✅ *Заявка брони подтверждена:*\n"
+        f"{"✅ *Заявка брони подтверждена:*" if is_success else "❌ *Заявка брони отклонена:*"}\n"
         f"🆔 ID: {booking.id}\n"
         f"👤 Имя: {booking.name}\n"
         f"👥 Количество гостей: {booking.guests}\n"
         f"📞 Телефон: {booking.phone}\n"
         f"📅 Дата: {format_date_russian(booking.date_time)}\n"
         f"⏰ Время: {booking.date_time.strftime('%H:%M')}\n"
-        f"🪑 Столы: {table_value}\n"
+        f"🪑 Столы: {", ".join(str(x) for x in booking.table_numbers)}\n"
         f"🌐 Источник: {booking.source.value}"
     )
 
 
 def finalize_booking_approval(
-    booking: Booking,
-    *,
-    table_value: str,
-    admin_chat_id: int,
-    prompt_message_id: Optional[int] = None,
-    extra_admin_message_ids: Iterable[int] = (),
+        booking: Booking,
+        *,
+        admin_chat_id: int,
 ) -> None:
     """Finalize the booking approval workflow shared across admin handlers."""
 
-    clear_ephemeral_messages(booking.id)
-
-    formatted_date = format_date_russian(booking.date_time)
-    time_str = booking.date_time.strftime("%H:%M")
-
-    _notify_user_booking_approved(booking, formatted_date, time_str)
-
-    new_text = _build_admin_confirmation_text(booking, table_value)
-    try:
-        bot.edit_message_text(new_text, chat_id=admin_chat_id, message_id=booking.message_id or -1)
-    except Exception as exc:
-        logger.error("Ошибка редактирования сообщения для заявки %s: %s", booking.id, exc)
-
-    if prompt_message_id:
-        try:
-            bot.delete_message(admin_chat_id, prompt_message_id)
-            logger.debug(
-                "Сообщение выбора стола для заявки %s (message_id=%s) удалено",
-                booking.id,
-                prompt_message_id,
-            )
-        except Exception as exc:
-            logger.error("Ошибка удаления сообщения выбора стола для заявки %s: %s", booking.id, exc)
-
-    for message_id in extra_admin_message_ids:
-        try:
-            bot.delete_message(admin_chat_id, message_id)
-        except Exception as exc:
-            logger.error("Ошибка удаления дополнительного сообщения админа %s для заявки %s: %s", message_id, booking.id, exc)
-
+    notify_user_booking_status(booking, True)
+    set_final_booking_text(admin_chat_id, booking)
+    logger.info("Бронь %s была подтверждена", booking)
     try:
         not_sent_bookings.append(booking)
     except Exception:
         logger.exception("Failed to enqueue approved booking %s", booking.id)
+    finalize_booking_actions(booking.id)
 
-    if booking.id in bookings:
-        try:
-            del bookings[booking.id]
-        except Exception:
-            logger.exception("Не удалось удалить заявку %s из хранилища", booking.id)
+
+def finalize_booking_actions(booking_id: str) -> None:
+    clear_ephemeral_messages(booking_id)
+    try:
+        del bookings[booking_id]
+        table_requests.pop(booking_id, None)
+        alt_requests.pop(booking_id, None)
+    except Exception:
+        logger.exception("Не удалось удалить заявку %s из хранилища", booking_id)
+
+
+def set_final_booking_text(chat_id: int, booking: Booking, is_success: bool = True) -> None:
+    try:
+        new_text = _build_admin_final_text(booking, is_success)
+        bot.edit_message_text(new_text, chat_id=chat_id, message_id=booking.message_id or -1, parse_mode="Markdown",)
+        logger.debug(f"Установлено финальное сообщение заявки {booking.id}: {new_text}")
+    except Exception as exc:
+        logger.error(f"Ошибка установки финального сообщения для заявки {booking.id}: {exc}")
+        raise

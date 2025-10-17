@@ -8,7 +8,6 @@ bookings: Dict[str, Booking] = {}
 
 # Tracks alternative date/time requests: booking_id -> admin message_id
 alt_requests: Dict[str, int] = {}
-
 # Tracks table selection prompt messages in admin group: booking_id -> message_id
 table_requests: Dict[str, int] = {}
 
