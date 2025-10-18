@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import queue
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler
@@ -18,7 +20,7 @@ from inbibe_bot.utils import format_date_russian
 # === Типы ====================================================================
 
 JSONDict: TypeAlias = dict[str, Any]
-
+logger = logging.getLogger(__name__)
 
 # === Валидация ==============================================================
 
@@ -75,15 +77,24 @@ class Handler(BaseHTTPRequestHandler):
         self._set_cors()
         self.end_headers()
 
+    import queue
+
     def do_GET(self) -> None:
         if self.path == "/api/bookings":
-            # return only approved bookings that have not been delivered yet
-            new_bookings = [
-                b.to_dict() for b in storage.not_sent_bookings
-            ]
-            self._send_raw_json(200, new_bookings)
-            storage.not_sent_bookings = []
+            new_bookings = []
 
+            # Опустошаем очередь и собираем все элементы
+            while True:
+                try:
+                    booking = storage.not_sent_bookings.get_nowait()
+                    new_bookings.append(booking.to_dict())
+                except queue.Empty:
+                    break
+
+            if new_bookings:
+                logger.info(f"Отправлена информация о новых бронях в количестве {len(new_bookings)}")
+
+            self._send_raw_json(200, new_bookings)
         else:
             self.not_found()
 
