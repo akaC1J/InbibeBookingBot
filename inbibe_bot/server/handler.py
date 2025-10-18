@@ -77,8 +77,6 @@ class Handler(BaseHTTPRequestHandler):
         self._set_cors()
         self.end_headers()
 
-    import queue
-
     def do_GET(self) -> None:
         if self.path == "/api/bookings":
             new_bookings = []
@@ -92,7 +90,7 @@ class Handler(BaseHTTPRequestHandler):
                     break
 
             if new_bookings:
-                logger.info(f"Отправлена информация о новых бронях в количестве {len(new_bookings)}")
+                logger.info("Отправлена информация о новых бронях в количестве %d", len(new_bookings))
 
             self._send_raw_json(200, new_bookings)
         else:

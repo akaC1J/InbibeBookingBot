@@ -36,7 +36,7 @@ class ThreadSafeDict(UserDict[K, V], Generic[K, V]):
     def items(self) -> ItemsView[K, V]:
         with self._lock:
             # копия, чтобы избежать гонок при итерации
-            return list(self.data.items())  # type: ignore[return-value]
+            return self.data.copy().items()
 
     def __iter__(self) -> Iterator[K]:
         with self._lock:
