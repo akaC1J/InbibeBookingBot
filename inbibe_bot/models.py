@@ -15,7 +15,7 @@ class Booking:
     phone: str
     date_time: datetime
     guests: int
-    table_number: int = -1  # -1 = Any
+    table_numbers: set[int] = field(default_factory=set)
     message_id: int | None = None
     source: Source = Source.TG
 
@@ -27,7 +27,7 @@ class Booking:
             "phone": self.phone,
             "date_time": self.date_time.isoformat(),
             "guests": self.guests,
-            "table_number": self.table_number,
+            "table_numbers": list(self.table_numbers),
             "source": self.source.value,
         }
 
@@ -36,7 +36,7 @@ class Booking:
 class UserStateData:
     name: str = ""
     phone: str = ""
-    date_time: datetime = datetime.now()
+    date_time: datetime = field(default_factory=datetime.now)
     guests: int = 0
 
 
