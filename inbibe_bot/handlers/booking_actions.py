@@ -75,9 +75,9 @@ def finalize_booking_approval(
 
     notify_user_booking_status(booking, True)
     set_final_booking_text(admin_chat_id, booking)
-    logger.info("Бронь %s была подтверждена", booking)
+    logger.info("Бронь %s была подтверждена", booking.id)
     try:
-        not_sent_bookings.append(booking)
+        not_sent_bookings.put(booking)
     except Exception:
         logger.exception("Failed to enqueue approved booking %s", booking.id)
     finalize_booking_actions(booking.id)
@@ -96,8 +96,8 @@ def finalize_booking_actions(booking_id: str) -> None:
 def set_final_booking_text(chat_id: int, booking: Booking, is_success: bool = True) -> None:
     try:
         new_text = _build_admin_final_text(booking, is_success)
-        bot.edit_message_text(new_text, chat_id=chat_id, message_id=booking.message_id or -1, parse_mode="Markdown")
-        logger.debug(f"Установлено финальное сообщение заявки {booking.id}: {new_text}")
+        bot.edit_message_text(new_text, chat_id=chat_id, message_id=booking.message_id or -1)
+        logger.debug(f"Установлено финальное сообщение заявки {booking.id} со статусом {is_success}")
     except Exception as exc:
         logger.error(f"Ошибка установки финального сообщения для заявки {booking.id}: {exc}")
         raise
