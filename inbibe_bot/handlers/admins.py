@@ -30,7 +30,7 @@ def _get_booking_or_alert(call: CallbackQuery, booking_id: str, action_descripti
     bot.answer_callback_query(call.id, "Заявка не найдена.", show_alert=True)
     return None
 
-@bot.callback_query_handler(func=lambda call: (call.data or "").startswith("approve_alt_"))
+@bot.callback_query_handler(func=lambda call: (call.context or "").startswith("approve_alt_"))
 def handle_approve_alt_callback(call: CallbackQuery) -> None:
     data = call.data or ""
     booking_id = _extract_booking_id(data, "approve_alt_")
@@ -56,7 +56,7 @@ def handle_approve_alt_callback(call: CallbackQuery) -> None:
 
 
 @bot.callback_query_handler(
-    func=lambda call: (call.data or "").startswith("approve_") and not (call.data or "").startswith("approve_alt_")
+    func=lambda call: (call.context or "").startswith("approve_") and not (call.context or "").startswith("approve_alt_")
 )
 def handle_approve_callback(call: CallbackQuery) -> None:
     data = call.data or ""
@@ -84,7 +84,7 @@ def handle_approve_callback(call: CallbackQuery) -> None:
         bot.answer_callback_query(call.id, "Ошибка при отправке клавиатуры", show_alert=True)
 
 
-@bot.callback_query_handler(func=lambda call: (call.data or "").startswith("reject_"))
+@bot.callback_query_handler(func=lambda call: (call.context or "").startswith("reject_"))
 def handle_reject_callback(call: CallbackQuery) -> None:
     data = call.data or ""
     booking_id = _extract_booking_id(data, "reject_")
@@ -146,7 +146,7 @@ def handle_table_selection_reply(message: Message) -> None:
     )
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("table_"))
+@bot.callback_query_handler(func=lambda call: call.context.startswith("table_"))
 def handle_table_selection(call: CallbackQuery) -> None:
     data = call.data or ""
     parts = data.split("_", 2)

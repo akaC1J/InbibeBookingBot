@@ -11,31 +11,25 @@ from telebot.types import Message, CallbackQuery, ReplyKeyboardRemove
 
 from inbibe_bot import utils
 from inbibe_bot.bot_instance import bot, ADMIN_GROUP_ID
+from inbibe_bot.handlers.user.states import states
+from inbibe_bot.handlers.user.user_state_machine import UserStateMachine
 from inbibe_bot.keyboards import (
     main_menu_keyboard,
     get_phone_keyboard,
     generate_date_keyboard,
     generate_time_keyboard,
 )
-from inbibe_bot.models import Booking, UserState
-from inbibe_bot.states import (
-    STATE_IDLE,
-    STATE_WAITING_FOR_NAME,
-    STATE_WAITING_FOR_PHONE,
-    STATE_WAITING_FOR_DATE,
-    STATE_WAITING_FOR_TIME,
-    STATE_WAITING_FOR_GUESTS,
-)
-from inbibe_bot.storage import user_states, bookings
+from inbibe_bot.models import Booking
+
+from inbibe_bot.storage import, bookings
 from inbibe_bot.utils import format_date_russian
 
 logger = logging.getLogger(__name__)
 
-PHONE_PATTERN: Final[re.Pattern[str]] = re.compile(r"^(?:\+7|8)\d{10}$")
+machine = UserStateMachine()
 
 
 # === /start ==================================================================
-
 @bot.message_handler(commands=["start"])
 def cmd_start(message: Message) -> None:
     """Обрабатывает команду /start — приветствие и инициализация состояния."""
@@ -47,8 +41,7 @@ def cmd_start(message: Message) -> None:
         logger.debug("Игнорируем /start для чата типа %s", chat_type)
         return
 
-    user_states.pop(chat_id, None)
-    user_states[chat_id] = UserState(state=STATE_IDLE)
+    machine.reset_state(chat_id)
 
     bot.send_message(
         chat_id,
@@ -74,47 +67,17 @@ def handle_message(message: Message) -> None:
     text = (message.text or "").strip()
     logger.debug("Сообщение от %s: %s", chat_id, text)
 
-    state_obj = user_states.get(chat_id)
-    if not state_obj:
-        bot.send_message(chat_id, "Пожалуйста, начните с команды /start")
-        logger.warning("Пользователь %s не найден в user_states", chat_id)
-        return
-
-    state = state_obj.state
-    data = state_obj.data
-
-    # === IDLE → NAME ===
-    if state == STATE_IDLE:
-        if text.lower() == "начать бронирование":
-            state_obj.state = STATE_WAITING_FOR_NAME
-            bot.send_message(chat_id, "Отлично! Как Вас зовут?", reply_markup=ReplyKeyboardRemove())
-            return
-        bot.send_message(chat_id, "Пожалуйста, нажмите «Начать бронирование», чтобы начать.")
-        return
 
     # === NAME → PHONE ===
     if state == STATE_WAITING_FOR_NAME:
         data.name = text
         state_obj.state = STATE_WAITING_FOR_PHONE
-        bot.send_message(
-            chat_id,
-            (
-                "Введите, пожалуйста, Ваш телефон.\n"
-                "Можно поделиться номером, нажав кнопку ниже, или ввести вручную."
-            ),
-            reply_markup=get_phone_keyboard(),
-        )
+
         return
 
     # === PHONE → DATE ===
     if state == STATE_WAITING_FOR_PHONE:
-        if not PHONE_PATTERN.match(text):
-            bot.send_message(chat_id, "Неверный формат телефона. Пример: +79261234567 или 89261234567")
-            return
-        data.phone = text
-        state_obj.state = STATE_WAITING_FOR_DATE
-        bot.send_message(chat_id, "Спасибо! Номер принят.", reply_markup=ReplyKeyboardRemove())
-        bot.send_message(chat_id, "Выберите дату бронирования:", reply_markup=generate_date_keyboard())
+
         return
 
     # === GUESTS → BOOKING ===
@@ -148,14 +111,15 @@ def handle_message(message: Message) -> None:
 def handle_contact(message: Message) -> None:
     """Получение телефона через кнопку «Отправить контакт»."""
     chat_id = message.chat.id
-    state_obj = user_states.get(chat_id)
+    state_obj = machine.get_current_state(chat_id)
+
     if not state_obj:
         logger.warning("Пользователь %s не найден при отправке контакта", chat_id)
         return
 
-    if state_obj.state == STATE_WAITING_FOR_PHONE and message.contact:
+    if message.contact:
         phone = message.contact.phone_number
-        state_obj.data.phone = phone
+        state_obj.context.phone = phone
         state_obj.state = STATE_WAITING_FOR_DATE
 
         bot.send_message(chat_id, "Спасибо! Номер принят.", reply_markup=ReplyKeyboardRemove())
@@ -165,7 +129,7 @@ def handle_contact(message: Message) -> None:
 
 # === Callback: выбор даты ====================================================
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("date_"))
+@bot.callback_query_handler(func=lambda call: call.context.startswith("date_"))
 def handle_date_callback(call: CallbackQuery) -> None:
     chat_id = call.from_user.id
     state_obj = user_states.get(chat_id)
@@ -195,7 +159,7 @@ def handle_date_callback(call: CallbackQuery) -> None:
 
 # === Callback: выбор времени =================================================
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("time_"))
+@bot.callback_query_handler(func=lambda call: call.context.startswith("time_"))
 def handle_time_callback(call: CallbackQuery) -> None:
     chat_id = call.from_user.id
     state_obj = user_states.get(chat_id)
@@ -214,7 +178,7 @@ def handle_time_callback(call: CallbackQuery) -> None:
         bot.answer_callback_query(call.id, "Ошибка формата времени.")
         return
 
-    state_obj.data.date_time = selected_dt
+    state_obj.context.date_time = selected_dt
     state_obj.state = STATE_WAITING_FOR_GUESTS
 
     bot.answer_callback_query(call.id, "Время выбрано.")

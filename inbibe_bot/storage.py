@@ -2,10 +2,8 @@ import queue
 from typing import Dict, List, Set
 
 from inbibe_bot.collections import ThreadSafeDict
-from inbibe_bot.models import Booking, UserState
+from inbibe_bot.models import Booking
 
-# In-memory storage for user states and bookings
-user_states: Dict[int, UserState] = {}
 bookings: ThreadSafeDict[str, Booking] = ThreadSafeDict()
 
 # Tracks alternative date/time requests: booking_id -> admin message_id
