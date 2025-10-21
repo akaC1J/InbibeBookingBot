@@ -1,17 +1,26 @@
-from dataclasses import dataclass
+from __future__ import annotations
 
-from inbibe_bot.handlers.user.states.states import AbstractState
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover - только для подсказок типов
+    from inbibe_bot.handlers.user.states.states import AbstractState
 
 
 @dataclass
 class UserStateData:
+    """Данные, которые собираются от пользователя в процессе бронирования."""
+
     name: str = ""
     phone: str = ""
-    date_time: datetime = field(default_factory=datetime.now)
+    date_time: datetime | None = None
     guests: int = 0
 
 
 @dataclass
 class UserState:
-    state: AbstractState
-    data: UserStateData = field(default_factory=lambda: UserStateData())
+    """Текущее состояние пользователя внутри state machine."""
+
+    state: "AbstractState"
+    data: UserStateData = field(default_factory=UserStateData)
