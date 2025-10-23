@@ -93,6 +93,8 @@ class Handler(BaseHTTPRequestHandler):
                 logger.info("Отправлена информация о новых бронях в количестве %d", len(new_bookings))
 
             self._send_raw_json(200, new_bookings)
+        elif self.path == "/api/health":
+            self._send_json(200, BookingResponse.ok())
         else:
             self.not_found()
 

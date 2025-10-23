@@ -1,4 +1,8 @@
 import logging
+import time
+
+from requests import ReadTimeout
+from telebot.apihelper import ApiTelegramException
 
 from inbibe_bot.logging_config import setup_logging
 
@@ -23,9 +27,26 @@ def run_http_server() -> None:
 if __name__ == "__main__":
     setup_logging()
 
-    # Запускаем HTTP-сервер в отдельном потоке
     http_thread = threading.Thread(target=run_http_server, daemon=True)
     http_thread.start()
 
     logging.info("🤖 Telegram-бот запущен")
-    bot.polling(none_stop=True)
+
+    while True:
+        try:
+            # none_stop=True поможет с мелкими сбоями
+            bot.polling(none_stop=True, interval=0, timeout=60)
+
+        except (ReadTimeout, ConnectionError) as e:
+            logging.error(f"⚠️ Сетевая ошибка: {e}")
+            logging.info("🔄 Переподключение через 5 секунд...")
+            time.sleep(5)
+
+        except KeyboardInterrupt:
+            logging.info("🛑 Остановка бота...")
+            break
+
+        except Exception as e:
+            logging.error(f"❌ Неожиданная ошибка: {e}", exc_info=True)
+            logging.info("🔄 Перезапуск через 15 секунд...")
+            time.sleep(15)
