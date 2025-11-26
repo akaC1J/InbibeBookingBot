@@ -16,6 +16,7 @@ table_requests: Dict[str, int] = {}
 # Queue of approved (ready) bookings to be delivered via API
 not_sent_bookings: queue.Queue[Booking] = queue.Queue()
 
-actual_tables: list[int] = [1, 2, 3, 4, 5, 6, 11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25]
+actual_tables: list[int] = [1, 2, 3, 4, 5, 6, 11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 31, 32, 33, 34, 35,
+                             36, 37, 38, 39]
 
 
