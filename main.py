@@ -1,21 +1,16 @@
 import logging
+import socketserver
+import sys
 import time
-
-from requests import ReadTimeout
-from telebot.apihelper import ApiTelegramException
-
-from inbibe_bot.logging_config import setup_logging
 
 # Register handlers
 # noinspection PyUnresolvedReferences
 import inbibe_bot.handlers.admins  # noqa: F401
 # noinspection PyUnresolvedReferences
 import inbibe_bot.handlers.user  # noqa: F401
+from inbibe_bot.bot_instance import bot, WEBHOOK_URL, WEBHOOK_SECRET
+from inbibe_bot.logging_config import setup_logging
 from inbibe_bot.server.handler import Handler
-
-import threading
-import socketserver
-from inbibe_bot.bot_instance import bot
 
 
 def run_http_server() -> None:
@@ -27,26 +22,23 @@ def run_http_server() -> None:
 if __name__ == "__main__":
     setup_logging()
 
-    http_thread = threading.Thread(target=run_http_server, daemon=True)
-    http_thread.start()
+    if WEBHOOK_URL:
+        bot.remove_webhook()
+        # Даем время Telegram обработать удаление и освободить ресурсы
+        time.sleep(1)
+        bot.set_webhook(url=WEBHOOK_URL + "/webhook", secret_token=WEBHOOK_SECRET)
+        logging.info(f"✅ Webhook установлен: {WEBHOOK_URL}/webhook")
+    else:
+        logging.error("❌ WEBHOOK_URL не задан, запуск невозможен")
+        sys.exit(1)
 
-    logging.info("🤖 Telegram-бот запущен")
+    logging.info("🤖 Telegram-бот запущен (Event-driven mode)")
 
-    while True:
-        try:
-            # none_stop=True поможет с мелкими сбоями
-            bot.polling(none_stop=True, interval=0, timeout=60)
-
-        except (ReadTimeout, ConnectionError) as e:
-            logging.error(f"⚠️ Сетевая ошибка: {e}")
-            logging.info("🔄 Переподключение через 5 секунд...")
-            time.sleep(5)
-
-        except KeyboardInterrupt:
-            logging.info("🛑 Остановка бота...")
-            break
-
-        except Exception as e:
-            logging.error(f"❌ Неожиданная ошибка: {e}", exc_info=True)
-            logging.info("🔄 Перезапуск через 15 секунд...")
-            time.sleep(15)
+    try:
+        run_http_server()
+    except KeyboardInterrupt:
+        logging.info("🛑 Остановка бота...")
+    finally:
+        if WEBHOOK_URL:
+            bot.remove_webhook()
+            logging.info("🧹 Webhook удален")
