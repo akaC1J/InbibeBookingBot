@@ -12,7 +12,7 @@ import telebot
 
 from inbibe_bot import storage
 from inbibe_bot import utils
-from inbibe_bot.bot_instance import bot, ADMIN_GROUP_ID
+from inbibe_bot.bot_instance import bot, ADMIN_GROUP_ID, WEBHOOK_SECRET
 from inbibe_bot.models import Booking, Source
 from inbibe_bot.server.model import BookingResponse, BookingRequest, BookingValidationError
 from inbibe_bot.utils import format_date_russian
@@ -162,6 +162,14 @@ class Handler(BaseHTTPRequestHandler):
             return False, BookingResponse.fail(error=str(e))
 
     def _handle_webhook(self) -> None:
+        # 1. Проверка secret token
+        secret = self.headers.get("X-Telegram-Bot-Api-Secret-Token")
+        if secret != WEBHOOK_SECRET:
+            self.send_response(403)
+            self.end_headers()
+            return
+
+        # 2. Проверка Content-Length
         try:
             content_length = int(self.headers.get("Content-Length", 0))
         except (TypeError, ValueError):
@@ -174,10 +182,33 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        json_string = self.rfile.read(content_length).decode("utf-8")
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
+        # 3. Чтение тела
+        try:
+            raw_body = self.rfile.read(content_length)
+            json_string = raw_body.decode("utf-8")
+        except Exception:
+            self.send_response(400)
+            self.end_headers()
+            return
 
+        # 4. Парсинг Update
+        try:
+            update = telebot.types.Update.de_json(json_string)
+        except Exception:
+            self.send_response(400)
+            self.end_headers()
+            return
+
+        # 5. Передача в бот
+        try:
+            bot.process_new_updates([update])
+        except Exception:
+            # важно не раскрывать внутренние ошибки наружу
+            self.send_response(500)
+            self.end_headers()
+            return
+
+        # 6. Успешный ответ
         self.send_response(200)
         self.end_headers()
 
