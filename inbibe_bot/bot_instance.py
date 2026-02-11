@@ -6,6 +6,7 @@ import telebot
 API_KEY = os.getenv("api_key")  # Ваш токен бота
 
 ADMIN_GROUP_ID = int(os.getenv("admin_group_id") or 0) # ID группы администраторов
+WEBHOOK_URL = os.getenv("webhook_url") # Публичный URL для вебхука
 
 if API_KEY is None or ADMIN_GROUP_ID is None:
     raise Exception("Не заданы необходимые переменные окружения")

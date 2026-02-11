@@ -99,54 +99,15 @@ class Handler(BaseHTTPRequestHandler):
             self.not_found()
 
     def do_POST(self) -> None:
-        if self.path != "/api/book":
-            self.not_found()
+        if self.path == "/webhook":
+            self._handle_webhook()
             return
 
-        ok, payload_or_err = self._read_json()
-        if not ok:
-            # Narrow type: after ok == False, payload_or_err must be a BookingResponse
-            assert isinstance(payload_or_err, BookingResponse)
-            self._send_json(400, payload_or_err)
+        if self.path == "/api/book":
+            self._handle_booking()
             return
 
-        # Narrow type: after ok == True, payload_or_err must be a BookingRequest
-        assert isinstance(payload_or_err, BookingRequest)
-
-        booking = Booking(id=utils.gen_id(),
-                          user_id=payload_or_err.user_id or -1,
-                          name=payload_or_err.name,
-                          phone=payload_or_err.phone,
-                          date_time=payload_or_err.date_time,
-                          guests=payload_or_err.guests,
-                          source=Source.VK
-                          )
-
-        storage.bookings[booking.id] = booking
-
-        booking_text = (
-            f"📥 Новая бронь (VK):\n"
-            f"ID: {booking.id}\n"
-            f"Имя: {booking.name}\n"
-            f"Телефон: {booking.phone}\n"
-            f"Дата: {format_date_russian(booking.date_time)}\n"
-            f"Время: {booking.date_time.strftime('%H:%M')}\n"
-            f"Гостей: {booking.guests}"
-        )
-
-        markup = telebot.types.InlineKeyboardMarkup(row_width=2)
-        markup.add(
-            telebot.types.InlineKeyboardButton("✅ Подтвердить", callback_data=f"approve_{booking.id}"),
-            telebot.types.InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{booking.id}"),
-        )
-        markup.add(
-            telebot.types.InlineKeyboardButton("🕘 Изменить дату/время", callback_data=f"approve_alt_{booking.id}")
-        )
-
-        msg = bot.send_message(ADMIN_GROUP_ID, booking_text, reply_markup=markup)
-        booking.message_id = msg.message_id
-
-        self._send_json(200, BookingResponse.ok())
+        self.not_found()
 
     # --- Утилиты -------------------------------------------------------------
 
@@ -183,13 +144,89 @@ class Handler(BaseHTTPRequestHandler):
             return False, BookingResponse.fail(error="empty body")
 
         try:
-            return True, BookingRequest.from_json(json.loads(body.decode("utf-8")))
+            decoded = body.decode("utf-8")
+            parsed_json = json.loads(decoded)
+            # 🔹 Логируем только валидный JSON
+            logging.info(
+                "Получен запрос бронирования. Полученный JSON: %s",
+                json.dumps(parsed_json, ensure_ascii=False)
+            )
+
+            return True, BookingRequest.from_json(parsed_json)
+
         except UnicodeDecodeError:
             return False, BookingResponse.fail(error="invalid encoding, expected UTF-8")
         except json.JSONDecodeError:
             return False, BookingResponse.fail(error="invalid JSON")
         except BookingValidationError as e:
             return False, BookingResponse.fail(error=str(e))
+
+    def _handle_webhook(self) -> None:
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+        except (TypeError, ValueError):
+            self.send_response(400)
+            self.end_headers()
+            return
+
+        if content_length <= 0:
+            self.send_response(400)
+            self.end_headers()
+            return
+
+        json_string = self.rfile.read(content_length).decode("utf-8")
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+
+        self.send_response(200)
+        self.end_headers()
+
+    def _handle_booking(self) -> None:
+        ok, payload_or_err = self._read_json()
+        if not ok:
+            # Narrow type: after ok == False, payload_or_err must be a BookingResponse
+            assert isinstance(payload_or_err, BookingResponse)
+            self._send_json(400, payload_or_err)
+            return
+
+        # Narrow type: after ok == True, payload_or_err must be a BookingRequest
+        assert isinstance(payload_or_err, BookingRequest)
+
+        booking = Booking(
+            id=utils.gen_id(),
+            user_id=payload_or_err.user_id or -1,
+            name=payload_or_err.name,
+            phone=payload_or_err.phone,
+            date_time=payload_or_err.date_time,
+            guests=payload_or_err.guests,
+            source=Source.VK,
+        )
+
+        storage.bookings[booking.id] = booking
+
+        booking_text = (
+            f"📥 Новая бронь (VK):\n"
+            f"ID: {booking.id}\n"
+            f"Имя: {booking.name}\n"
+            f"Телефон: {booking.phone}\n"
+            f"Дата: {format_date_russian(booking.date_time)}\n"
+            f"Время: {booking.date_time.strftime('%H:%M')}\n"
+            f"Гостей: {booking.guests}"
+        )
+
+        markup = telebot.types.InlineKeyboardMarkup(row_width=2)
+        markup.add(
+            telebot.types.InlineKeyboardButton("✅ Подтвердить", callback_data=f"approve_{booking.id}"),
+            telebot.types.InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{booking.id}"),
+        )
+        markup.add(
+            telebot.types.InlineKeyboardButton("🕘 Изменить дату/время", callback_data=f"approve_alt_{booking.id}")
+        )
+
+        msg = bot.send_message(ADMIN_GROUP_ID, booking_text, reply_markup=markup)
+        booking.message_id = msg.message_id
+
+        self._send_json(200, BookingResponse.ok())
 
     def not_found(self) -> None:
         self._send_json(404, BookingResponse.fail(error="Not found"))
@@ -199,4 +236,3 @@ class Handler(BaseHTTPRequestHandler):
         if code == 200 and getattr(self, "path", "") == "/api/bookings":
             return
         super().log_request(code, size)
-
