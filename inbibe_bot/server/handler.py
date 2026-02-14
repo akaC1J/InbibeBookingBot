@@ -72,6 +72,24 @@ def _parse_iso_datetime(value: Any, field: str) -> tuple[datetime | None, Valida
 class Handler(BaseHTTPRequestHandler):
     """HTTP API: POST /api/book"""
 
+    _disabled_request_logging_paths: set[str] = set()
+
+    @classmethod
+    def set_request_logging(cls, path: str, enabled: bool) -> None:
+        """Включает или отключает стандартное логирование BaseHTTPRequestHandler для ручки."""
+        if enabled:
+            cls._disabled_request_logging_paths.discard(path)
+            return
+
+        cls._disabled_request_logging_paths.add(path)
+
+    def log_message(self, format: str, *args: Any) -> None:
+        request_path = self.path.split("?", 1)[0]
+        if request_path in self._disabled_request_logging_paths:
+            return
+
+        super().log_message(format, *args)
+
     def do_OPTIONS(self) -> None:
         self.send_response(204)
         self._set_cors()
@@ -212,6 +230,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
 
+
     def _handle_booking(self) -> None:
         ok, payload_or_err = self._read_json()
         if not ok:
@@ -267,3 +286,6 @@ class Handler(BaseHTTPRequestHandler):
         if code == 200 and getattr(self, "path", "") == "/api/bookings":
             return
         super().log_request(code, size)
+
+
+Handler.set_request_logging("/webhook", enabled=False)
