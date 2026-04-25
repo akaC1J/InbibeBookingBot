@@ -20,3 +20,7 @@ release:
 
 deploy:
 	dockhost compose apply ./dockhost.yaml
+
+check_tg_hook:
+	curl https://api.telegram.org/bot$(TG_API_KEY)/getWebhookInfo
+

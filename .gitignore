@@ -35,3 +35,6 @@ logs/
 
 # Docker
 *.pid
+
+# User data
+data/

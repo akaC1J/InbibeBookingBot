@@ -1,14 +1,12 @@
 from collections import UserDict
 from threading import RLock
-from typing import TypeVar, Generic, Iterator, ItemsView, MutableMapping, Any
+from typing import TypeVar, Generic, Iterator, ItemsView, Any
 
 K = TypeVar("K")
 V = TypeVar("V")
 
 
 class ThreadSafeDict(UserDict[K, V], Generic[K, V]):
-    """Потокобезопасный словарь с интерфейсом dict"""
-
     _lock: RLock
     data: dict[K, V]
 
@@ -29,16 +27,13 @@ class ThreadSafeDict(UserDict[K, V], Generic[K, V]):
             super().__delitem__(key)
 
     def get(self, key: K, default: Any = None) -> Any:
-        """Совместимая сигнатура с Mapping.get"""
         with self._lock:
             return super().get(key, default)
 
     def items(self) -> ItemsView[K, V]:
         with self._lock:
-            # копия, чтобы избежать гонок при итерации
             return self.data.copy().items()
 
     def __iter__(self) -> Iterator[K]:
         with self._lock:
-            # возвращаем копию ключей для безопасной итерации
             return iter(list(self.data.keys()))

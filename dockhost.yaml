@@ -15,11 +15,20 @@ registries:
       password: ${DOCKER_RW_TOKEN}
       state: present
 
+volumes:
+
+  default:
+    size: 1Gi
+    type: hdd
+    mode: rwm
 
 containers:
   inbibe-order-bot:
     image: akas1j/inbibe-order-bot:latest
     replicas: 1
+    volumes:
+      - name: default
+        mountPath: /app/data
     resources:
       cpu: 1
       cpuFraction: 10

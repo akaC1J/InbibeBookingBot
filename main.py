@@ -1,44 +1,123 @@
+import atexit
 import logging
-import socketserver
+import signal
 import sys
 import time
 
-# Register handlers
-# noinspection PyUnresolvedReferences
-import inbibe_bot.handlers.admins  # noqa: F401
-# noinspection PyUnresolvedReferences
-import inbibe_bot.handlers.user  # noqa: F401
-from inbibe_bot.bot_instance import bot, WEBHOOK_URL, WEBHOOK_SECRET
+from inbibe_bot.config import AppConfig, ConfigError
+from inbibe_bot.core.booking_workflow import BookingWorkflow
+from inbibe_bot.core.formatter import BookingFormatter
+from inbibe_bot.client.bot_factory import Deps, build_bot, register_all_handlers
 from inbibe_bot.logging_config import setup_logging
-from inbibe_bot.server.handler import Handler
-
-
-def run_http_server() -> None:
-    with socketserver.TCPServer(("", 8000), Handler) as httpd:
-        logging.info("🌐 HTTP сервер запущен на порту 8000")
-        httpd.serve_forever()
+from inbibe_bot.server.http_server import build_server
+from inbibe_bot.server.routes import ServerDeps
+from inbibe_bot.storage.booking_repository import BookingRepository
+from inbibe_bot.storage.delivery_queue import ApprovedBookingQueue
+from inbibe_bot.storage.ephemeral_messages import EphemeralMessageService
+from inbibe_bot.storage.persistence import StatePersister
+from inbibe_bot.storage.user_flow_repository import UserFlowRepository
 
 
 if __name__ == "__main__":
     setup_logging()
 
-    if WEBHOOK_URL:
-        bot.remove_webhook()
-        # Даем время Telegram обработать удаление и освободить ресурсы
-        time.sleep(1)
-        bot.set_webhook(url=WEBHOOK_URL + "/webhook", secret_token=WEBHOOK_SECRET)
-        logging.info(f"✅ Webhook установлен: {WEBHOOK_URL}/webhook")
-    else:
-        logging.error("❌ WEBHOOK_URL не задан, запуск невозможен")
+    try:
+        config = AppConfig.from_env()
+    except ConfigError as e:
+        logging.error("Ошибка конфигурации: %s", e)
         sys.exit(1)
 
-    logging.info("🤖 Telegram-бот запущен (Event-driven mode)")
+    # --- Зависимости ---
+    bot = build_bot(config)
+    booking_repo = BookingRepository()
+    flow_repo = UserFlowRepository()
+    delivery_queue = ApprovedBookingQueue()
+    ephemeral = EphemeralMessageService(bot)
+    workflow = BookingWorkflow(allowed_tables=set(config.actual_tables))
+    formatter = BookingFormatter()
 
-    try:
-        run_http_server()
-    except KeyboardInterrupt:
-        logging.info("🛑 Остановка бота...")
-    finally:
-        if WEBHOOK_URL:
+    deps = Deps(
+        bot=bot,
+        config=config,
+        booking_repo=booking_repo,
+        flow_repo=flow_repo,
+        delivery_queue=delivery_queue,
+        ephemeral=ephemeral,
+        workflow=workflow,
+        formatter=formatter,
+    )
+
+    # --- Persistence ---
+    persister = StatePersister(
+        path=config.state_file,
+        bookings=booking_repo,
+        flows=flow_repo,
+        queue=delivery_queue,
+        ephemeral=ephemeral,
+    )
+    persister.load()
+    atexit.register(persister.save)
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+
+    # --- Регистрация хэндлеров ---
+    register_all_handlers(deps)
+
+    # --- Прокси ---
+    import telebot.apihelper as _apihelper
+    if config.tg_proxy:
+        _apihelper.proxy = {"https": config.tg_proxy}  # type: ignore[assignment]
+        logging.info("Прокси для Telegram: %s", config.tg_proxy)
+    else:
+        logging.info("Прокси для Telegram: не задан")
+
+    # --- HTTP сервер (нужен в обоих режимах) ---
+    server_deps = ServerDeps(
+        bot=bot,
+        admin_group_id=config.admin_group_id,
+        webhook_secret=config.webhook_secret,
+        booking_repo=booking_repo,
+        delivery_queue=delivery_queue,
+        formatter=formatter,
+    )
+
+    logging.info("Режим запуска: %s", config.tg_mode)
+
+    if config.tg_mode == "polling":
+        import threading
+        bot.remove_webhook()
+
+        http_server = build_server(server_deps, config.http_port)
+        threading.Thread(
+            target=http_server.serve_forever,
+            daemon=True,
+            name="http-server",
+        ).start()
+        logging.info("HTTP сервер запущен на порту %s (фоновый поток)", config.http_port)
+
+        try:
+            bot.infinity_polling(timeout=30, long_polling_timeout=30)
+        except KeyboardInterrupt:
+            logging.info("Остановка бота...")
+        finally:
+            http_server.shutdown()
             bot.remove_webhook()
-            logging.info("🧹 Webhook удален")
+
+    else:  # webhook
+        if not config.webhook_url:
+            logging.error("WEBHOOK_URL не задан, запуск невозможен")
+            sys.exit(1)
+
+        bot.remove_webhook()
+        time.sleep(1)
+        bot.set_webhook(url=config.webhook_url + "/webhook", secret_token=config.webhook_secret)
+        logging.info("Webhook установлен: %s/webhook", config.webhook_url)
+
+        try:
+            with build_server(server_deps, config.http_port) as httpd:
+                logging.info("HTTP сервер запущен на порту %s", config.http_port)
+                httpd.serve_forever()
+        except KeyboardInterrupt:
+            logging.info("Остановка бота...")
+        finally:
+            bot.remove_webhook()
+            logging.info("Webhook удален")
