@@ -1,20 +1,18 @@
 import logging
 import os
-import secrets
 
 import telebot
 
-API_KEY = os.getenv("api_key")  # Ваш токен бота
+TG_API_KEY = os.getenv("TG_API_KEY")  # Ваш токен бота
+ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID") or 0) # ID группы администраторов
+WEBHOOK_URL = os.getenv("WEBHOOK_URL") # Публичный URL для вебхука
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 
-ADMIN_GROUP_ID = int(os.getenv("admin_group_id") or 0) # ID группы администраторов
-WEBHOOK_URL = os.getenv("webhook_url") # Публичный URL для вебхука
-WEBHOOK_SECRET = secrets.token_urlsafe(32)
 
-
-if API_KEY is None or ADMIN_GROUP_ID is None:
+if TG_API_KEY is None or ADMIN_GROUP_ID is None:
     raise Exception("Не заданы необходимые переменные окружения")
 
 logger = logging.getLogger(__name__)
 
-bot = telebot.TeleBot(API_KEY)
-logger.debug(f'Бот сконфигурирован API_KEY:{API_KEY}, ID группы администраторов {ADMIN_GROUP_ID}')
+bot = telebot.TeleBot(TG_API_KEY)
+logger.debug(f'Бот сконфигурирован API_KEY:{TG_API_KEY}, ID группы администраторов {ADMIN_GROUP_ID}')

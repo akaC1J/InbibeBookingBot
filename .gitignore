@@ -21,7 +21,7 @@ ENV/
 Thumbs.db
 
 # Env files
-.env
+.env.local
 .env.*
 !.env.example
 

@@ -1,0 +1,45 @@
+version: 1
+project: inbibe-order-bot
+timezone: Europe/Moscow
+
+dns:
+  nameservers:
+    - 8.8.8.8
+    - 8.8.4.4
+  cache: 30
+  loadBalance: false
+
+registries:
+    - registry: index.docker.io
+      user: ${DOCKER_LOGIN}
+      password: ${DOCKER_RW_TOKEN}
+      state: present
+
+
+containers:
+  inbibe-order-bot:
+    image: akas1j/inbibe-order-bot:latest
+    replicas: 1
+    resources:
+      cpu: 1
+      cpuFraction: 10
+      memory: 70MiB
+    ports:
+      - 8000/TCP
+    variables:
+      TG_API_KEY:  ${TG_API_KEY}
+      ADMIN_GROUP_ID:  ${ADMIN_GROUP_ID}
+      VK_ACCESS_TOKEN:  ${VK_ACCESS_TOKEN}
+      WEBHOOK_URL:  ${WEBHOOK_URL}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+
+network:
+  domains:
+    host: ~
+  routes:
+    defaultroute:
+      domain: host
+      path: /
+      type: internal
+      service: inbibe-order-bot
+      port: 8000/TCP
