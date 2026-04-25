@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from http.server import BaseHTTPRequestHandler
 
 import telebot
+from flask import Flask, Response
 
 from inbibe_bot.core.formatter import BookingFormatter
 from inbibe_bot.server import booking_api, telegram_webhook
@@ -25,8 +25,17 @@ class ServerDeps:
     formatter: BookingFormatter
 
 
-def build_handler(deps: ServerDeps) -> type[BaseHTTPRequestHandler]:
-    _api_deps = BookingApiDeps(
+class _SkipBookingsAccessLogFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return not ("GET /api/bookings" in msg and " 200 " in msg)
+
+
+def build_app(deps: ServerDeps) -> Flask:
+    app = Flask(__name__)
+    app.json.ensure_ascii = False  # type: ignore[attr-defined]
+
+    api_deps = BookingApiDeps(
         bot=deps.bot,
         admin_group_id=deps.admin_group_id,
         booking_repo=deps.booking_repo,
@@ -34,46 +43,29 @@ def build_handler(deps: ServerDeps) -> type[BaseHTTPRequestHandler]:
         formatter=deps.formatter,
     )
 
-    class Handler(BaseHTTPRequestHandler):
-        def do_OPTIONS(self) -> None:
-            self.send_response(204)
-            self._set_cors()
-            self.end_headers()
+    @app.after_request
+    def _cors(response: Response) -> Response:
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return response
 
-        def do_GET(self) -> None:
-            if self.path == "/api/bookings":
-                booking_api.handle_get_bookings(self, deps.delivery_queue)
-            elif self.path == "/api/health":
-                booking_api.handle_health(self)
-            else:
-                self._not_found()
+    @app.get("/api/health")
+    def health() -> Response:
+        return booking_api.handle_health()
 
-        def do_POST(self) -> None:
-            if self.path == "/webhook":
-                telegram_webhook.handle_webhook(self, deps.bot, deps.webhook_secret)
-            elif self.path == "/api/book":
-                booking_api.handle_post_booking(self, _api_deps)
-            else:
-                self._not_found()
+    @app.get("/api/bookings")
+    def get_bookings() -> Response:
+        return booking_api.handle_get_bookings(deps.delivery_queue)
 
-        def _set_cors(self) -> None:
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+    @app.post("/api/book")
+    def post_booking() -> tuple[Response, int]:
+        return booking_api.handle_post_booking(api_deps)
 
-        def _not_found(self) -> None:
-            import json
-            self.send_response(404)
-            self._set_cors()
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(
-                json.dumps({"success": False, "error": "Not found"}, ensure_ascii=False).encode()
-            )
+    @app.post("/webhook")
+    def webhook() -> tuple[str, int]:
+        return telegram_webhook.handle_webhook(deps.bot, deps.webhook_secret)
 
-        def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
-            if code == 200 and getattr(self, "path", "") == "/api/bookings":
-                return
-            super().log_request(code, size)
+    logging.getLogger("werkzeug").addFilter(_SkipBookingsAccessLogFilter())
 
-    return Handler
+    return app

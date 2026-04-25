@@ -1,58 +1,36 @@
 from __future__ import annotations
 
 import logging
-from http.server import BaseHTTPRequestHandler
 
 import telebot
+from flask import request
 
 logger = logging.getLogger(__name__)
 
 
-def handle_webhook(
-    handler: BaseHTTPRequestHandler,
-    bot: telebot.TeleBot,
-    webhook_secret: str,
-) -> None:
-    secret = handler.headers.get("X-Telegram-Bot-Api-Secret-Token")
+def handle_webhook(bot: telebot.TeleBot, webhook_secret: str) -> tuple[str, int]:
+    secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
     if secret != webhook_secret:
-        handler.send_response(403)
-        handler.end_headers()
-        return
+        return "", 403
+
+    raw = request.get_data()
+    if not raw:
+        return "", 400
 
     try:
-        content_length = int(handler.headers.get("Content-Length", 0))
-    except (TypeError, ValueError):
-        handler.send_response(400)
-        handler.end_headers()
-        return
-
-    if content_length <= 0:
-        handler.send_response(400)
-        handler.end_headers()
-        return
-
-    try:
-        raw_body = handler.rfile.read(content_length)
-        json_string = raw_body.decode("utf-8")
-    except Exception:
-        handler.send_response(400)
-        handler.end_headers()
-        return
+        json_string = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return "", 400
 
     try:
         update = telebot.types.Update.de_json(json_string)
     except Exception:
-        handler.send_response(400)
-        handler.end_headers()
-        return
+        return "", 400
 
     try:
         bot.process_new_updates([update])
     except Exception:
         logger.exception("Ошибка обработки webhook update")
-        handler.send_response(500)
-        handler.end_headers()
-        return
+        return "", 500
 
-    handler.send_response(200)
-    handler.end_headers()
+    return "", 200
