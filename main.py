@@ -1,6 +1,4 @@
-import atexit
 import logging
-import signal
 import sys
 import time
 
@@ -56,8 +54,10 @@ if __name__ == "__main__":
         ephemeral=ephemeral,
     )
     persister.load()
-    atexit.register(persister.save)
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+
+    # Сохранять при каждом изменении — надёжнее чем atexit в Docker
+    for repo in (booking_repo, flow_repo, delivery_queue, ephemeral):
+        repo.set_change_callback(persister.save)
 
     # --- Регистрация хэндлеров ---
     register_all_handlers(deps)

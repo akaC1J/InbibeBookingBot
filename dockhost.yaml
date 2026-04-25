@@ -19,12 +19,12 @@ volumes:
 
   default:
     size: 1Gi
-    type: hdd
+    type: ssd
     mode: rwm
 
 containers:
   inbibe-order-bot:
-    image: akas1j/inbibe-order-bot:latest
+    image: akas1j/inbibe-order-bot:${VERSION}
     replicas: 1
     volumes:
       - name: default
