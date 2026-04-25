@@ -19,7 +19,7 @@ release:
 	docker push akas1j/inbibe-order-bot:latest
 
 deploy:
-	VERSION=$(or $(VERSION),latest) dockhost compose apply ./dockhost.yaml
+	VERSION=$(or v$(VERSION),latest) dockhost compose apply ./dockhost.yaml
 
 check_tg_hook:
 	curl https://api.telegram.org/bot$(TG_API_KEY)/getWebhookInfo
