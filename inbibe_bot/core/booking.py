@@ -50,8 +50,8 @@ class Booking:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Booking":
-        return cls(
+    def from_dict(cls, data: dict) -> Booking:
+        return Booking(
             id=data["id"],
             user_id=data["user_id"],
             name=data["name"],

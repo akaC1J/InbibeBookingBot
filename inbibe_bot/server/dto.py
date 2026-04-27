@@ -20,12 +20,12 @@ class BookingResponse:
         return asdict(self)
 
     @classmethod
-    def ok(cls) -> "BookingResponse":
-        return cls(success=True)
+    def ok(cls) -> BookingResponse:
+        return BookingResponse(success=True)
 
     @classmethod
-    def fail(cls, error: str) -> "BookingResponse":
-        return cls(success=False, error=error)
+    def fail(cls, error: str) -> BookingResponse:
+        return BookingResponse(success=False, error=error)
 
 
 @dataclass
@@ -37,7 +37,7 @@ class BookingRequest:
     guests: int
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> "BookingRequest":
+    def from_json(cls, data: dict[str, Any]) -> BookingRequest:
         try:
             for field in ("name", "phone", "date_time", "guests"):
                 if field not in data or data[field] in (None, "", []):
@@ -56,7 +56,7 @@ class BookingRequest:
             if guests <= 0:
                 raise BookingValidationError("Количество гостей должно быть больше нуля")
 
-            return cls(
+            return BookingRequest(
                 user_id=user_id,
                 name=str(data["name"]).strip(),
                 phone=str(data["phone"]).strip(),

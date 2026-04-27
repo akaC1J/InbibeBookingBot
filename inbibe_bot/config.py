@@ -24,7 +24,7 @@ class AppConfig:
     http_port: int
 
     @classmethod
-    def from_env(cls) -> "AppConfig":
+    def from_env(cls) -> AppConfig:
         tg_api_key = os.getenv("TG_API_KEY")
         if not tg_api_key:
             raise ConfigError("TG_API_KEY не задан")
@@ -47,14 +47,9 @@ class AppConfig:
             except ValueError:
                 raise ConfigError("ACTUAL_TABLES должен быть списком чисел через запятую")
         else:
-            actual_tables = (
-                1, 2, 3, 4, 5, 6,
-                11, 12, 13, 14, 15, 16, 17, 18,
-                21, 22, 23, 24, 25,
-                31, 32, 33, 34, 35, 36, 37, 38, 39,
-            )
+            raise ConfigError("ACTUAL_TABLES не задан, невозможно определить список столов")
 
-        return cls(
+        return AppConfig(
             tg_api_key=tg_api_key,
             admin_group_id=admin_group_id,
             webhook_url=webhook_url,
