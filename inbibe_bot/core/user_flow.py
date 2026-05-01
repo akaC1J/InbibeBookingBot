@@ -15,6 +15,7 @@ PHONE_PATTERN: Final[re.Pattern[str]] = re.compile(r"^(?:\+7|8)\d{10}$")
 
 class FlowStep(str, Enum):
     IDLE = "idle"
+    PRE_START = "pre_start"
     NAME = "name"
     PHONE = "phone"
     DATE = "date"
@@ -37,15 +38,19 @@ class UserFlow:
     step: FlowStep = FlowStep.IDLE
     data: UserFlowData = field(default_factory=UserFlowData)
 
+    def pre_start(self) -> None:
+        self.step = FlowStep.PRE_START
+        self.data = UserFlowData()
+
     def start(self) -> None:
         self.step = FlowStep.NAME
-        self.data = UserFlowData()
 
     def submit_name(self, name: str) -> None:
         self.data.name = name
         self.step = FlowStep.PHONE
 
     def submit_phone(self, phone: str) -> None:
+        phone = phone.replace(" ", "")
         if not PHONE_PATTERN.match(phone):
             raise FlowValidationError("Неверный формат телефона. Пример: +79261234567 или 89261234567")
         self.data.phone = phone

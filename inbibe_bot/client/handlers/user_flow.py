@@ -31,7 +31,7 @@ def register(deps: Deps) -> None:
         chat_id = message.chat.id
         register_tg_user(chat_id)
         flow = deps.flow_repo.get_or_create(chat_id)
-        flow.start()
+        flow.pre_start()
         deps.flow_repo.save(flow)
         logger.info("Пользователь %s запустил /start", chat_id)
         bot.send_message(
@@ -113,6 +113,15 @@ def register(deps: Deps) -> None:
 
         if not flow or flow.step == FlowStep.IDLE:
             bot.send_message(chat_id, "Пожалуйста, начните с команды /start")
+            return
+
+        if flow.step == FlowStep.PRE_START:
+            flow.start()
+            deps.flow_repo.save(flow)
+            bot.send_message(
+                chat_id,
+                "Введите, пожалуйста, Ваше имя:",
+            )
             return
 
         if flow.step == FlowStep.NAME:
